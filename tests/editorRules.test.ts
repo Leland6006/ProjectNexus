@@ -90,9 +90,9 @@ test('final confirmation needs a shared, unlocked, saved latest version', () => 
 
 test('versions are sorted newest first without mutating the input', () => {
   const versions = [
-    { id: 'v1', contractId: 'ct_1', number: 1, label: 'a', note: '', clauses: [], authorId: 'u', createdAt: 'x' },
-    { id: 'v3', contractId: 'ct_1', number: 3, label: 'c', note: '', clauses: [], authorId: 'u', createdAt: 'x' },
-    { id: 'v2', contractId: 'ct_1', number: 2, label: 'b', note: '', clauses: [], authorId: 'u', createdAt: 'x' }
+    { id: 'v1', contractId: 'ct_1', number: 1, label: 'a', note: '', clauses: [], paymentTerms: null, authorId: 'u', createdAt: 'x' },
+    { id: 'v3', contractId: 'ct_1', number: 3, label: 'c', note: '', clauses: [], paymentTerms: null, authorId: 'u', createdAt: 'x' },
+    { id: 'v2', contractId: 'ct_1', number: 2, label: 'b', note: '', clauses: [], paymentTerms: null, authorId: 'u', createdAt: 'x' }
   ]
   const sorted = sortVersionsDesc(versions)
   assert.deepEqual(sorted.map((v) => v.number), [3, 2, 1])
@@ -101,9 +101,9 @@ test('versions are sorted newest first without mutating the input', () => {
 
 test('previousVersion finds the immediately preceding version', () => {
   const versions = sortVersionsDesc([
-    { id: 'v1', contractId: 'ct_1', number: 1, label: 'a', note: '', clauses: [], authorId: 'u', createdAt: 'x' },
-    { id: 'v2', contractId: 'ct_1', number: 2, label: 'b', note: '', clauses: [], authorId: 'u', createdAt: 'x' },
-    { id: 'v3', contractId: 'ct_1', number: 3, label: 'c', note: '', clauses: [], authorId: 'u', createdAt: 'x' }
+    { id: 'v1', contractId: 'ct_1', number: 1, label: 'a', note: '', clauses: [], paymentTerms: null, authorId: 'u', createdAt: 'x' },
+    { id: 'v2', contractId: 'ct_1', number: 2, label: 'b', note: '', clauses: [], paymentTerms: null, authorId: 'u', createdAt: 'x' },
+    { id: 'v3', contractId: 'ct_1', number: 3, label: 'c', note: '', clauses: [], paymentTerms: null, authorId: 'u', createdAt: 'x' }
   ])
   assert.equal(previousVersion(versions, versions[0])?.number, 2)
   assert.equal(previousVersion(versions, versions[1])?.number, 1)

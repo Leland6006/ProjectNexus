@@ -65,12 +65,38 @@ export interface Clause {
   body: string
 }
 
+export interface PaymentInstalment {
+  id: string
+  label: string
+  /** Share of the contract amount, 0..1. */
+  rate: number
+  dueDate: string
+}
+
+/**
+ * The machine-readable mirror of the contract's payment clause.
+ *
+ * A text diff can only report "clause 6 changed"; it cannot produce the numbers an
+ * agent needs to reason about cash. Keeping the commercial terms as structured fields
+ * (edited through a form, rendered into the clause text) is what makes event-driven
+ * cross-domain analysis possible without asking a model to parse prose.
+ */
+export interface PaymentTerms {
+  /** Share paid up front, 0..1. */
+  prepayRate: number
+  instalments: PaymentInstalment[]
+  /** Days between acceptance and final settlement. */
+  settlementDays: number
+}
+
 export interface Contract {
   id: string
   transactionId: string
   title: string
   status: ContractStatus
   clauses: Clause[]
+  /** Structured payment terms; null until they have been filled in. */
+  paymentTerms: PaymentTerms | null
   /** Whether the counterparty organisation may see this contract. */
   sharedWithCounterparty: boolean
   /** When the contract was shared; counterparty only sees history from this moment on. */
@@ -90,6 +116,8 @@ export interface ContractVersion {
   label: string
   note: string
   clauses: Clause[]
+  /** Snapshot of the structured terms at this version, so terms can be diffed. */
+  paymentTerms: PaymentTerms | null
   authorId: string
   createdAt: string
 }
@@ -157,6 +185,130 @@ export interface Milestone {
   createdAt: string
 }
 
+export type CostStatus = 'planned' | 'committed' | 'paid'
+
+/**
+ * Cash the company expects to pay out to deliver a transaction. V0.1 had收款侧 only
+ * (Milestone.paymentAmount); without the cost side no cash-flow question is answerable.
+ */
+export interface CostItem {
+  id: string
+  transactionId: string
+  /** Organisation bearing the cost, which also decides who may see it. */
+  orgId: string
+  name: string
+  amount: number
+  dueDate: string
+  status: CostStatus
+  visibility: Visibility
+  createdBy: string
+  createdAt: string
+}
+
+export interface CashAccount {
+  id: string
+  orgId: string
+  label: string
+  /** Cash on hand at `asOf`. */
+  openingBalance: number
+  asOf: string
+}
+
+/**
+ * Epistemic status. This is the single most important field in the context engine:
+ * a model's guess must never be stored the same way as a signed contract term.
+ *
+ * confirmed   : read from a source of truth (contract, ledger, user-confirmed input)
+ * inferred    : derived or predicted by an agent or a projection; needs confirmation
+ * recommended : an action somebody should take
+ *
+ * Only a human may promote `inferred`/`recommended` to `confirmed`.
+ */
+export type ClaimStatus = 'confirmed' | 'inferred' | 'recommended'
+
+export interface ClaimSource {
+  kind: 'contract' | 'transaction' | 'ledger' | 'user' | 'agent'
+  /** Contract id, cost item id, agent id, ... depending on `kind`. */
+  ref?: string
+  detail?: string
+}
+
+/**
+ * One unit of company memory. Claims are the only thing agents are allowed to read;
+ * they never receive the raw database.
+ */
+export interface Claim {
+  id: string
+  orgId: string
+  /** null for company-wide facts. */
+  transactionId: string | null
+  /** Stable semantic key (`payment.prepay_rate`) so re-runs update instead of duplicate. */
+  key: string
+  label: string
+  value: string
+  numeric: number | null
+  unit: string | null
+  status: ClaimStatus
+  source: ClaimSource
+  asOf: string
+  visibility: Visibility
+  supersededById: string | null
+  confirmedBy: string | null
+  confirmedAt: string | null
+}
+
+export type DomainEventType = 'payment_terms_changed' | 'cost_committed' | 'milestone_delayed'
+
+/**
+ * A business change worth reacting to. Payload holds numbers, not prose, so the
+ * routing rules can branch on them deterministically.
+ */
+export interface DomainEvent {
+  id: string
+  type: DomainEventType
+  transactionId: string
+  contractId: string | null
+  at: string
+  summary: string
+  payload: Record<string, number | string | null>
+  visibility: Visibility
+}
+
+export type ProposalStatus = 'pending' | 'approved' | 'rejected'
+
+export interface ProposedAction {
+  kind: 'counter_offer' | 'revise_clause' | 'add_task' | 'contact_counterparty'
+  title: string
+  detail: string
+  clauseId?: string | null
+  proposedBody?: string | null
+}
+
+/**
+ * An agent-written draft. Nothing happens until a human approves it, and approval is
+ * refused if the contract moved on in the meantime (`baseVersionId`).
+ */
+export interface Proposal {
+  id: string
+  transactionId: string
+  contractId: string | null
+  orgId: string
+  title: string
+  rationale: string
+  actions: ProposedAction[]
+  /** Findings this draft rests on. All of them must be visible to the approver. */
+  claimIds: string[]
+  eventId: string | null
+  status: ProposalStatus
+  /** `agent:main` for agent drafts, a user id when drafted by hand. */
+  createdBy: string
+  createdAt: string
+  resolvedBy: string | null
+  resolvedAt: string | null
+  /** Newest version when the draft was written; approval fails once it is stale. */
+  baseVersionId: string | null
+}
+
 export type ActivityType =
   | 'transaction_created'
   | 'transaction_updated'
@@ -177,6 +329,9 @@ export type ActivityType =
   | 'message_sent'
   | 'milestone_created'
   | 'milestone_updated'
+  | 'proposal_created'
+  | 'proposal_approved'
+  | 'proposal_rejected'
 
 export interface Activity {
   id: string
@@ -203,6 +358,10 @@ export interface Database {
   messages: Message[]
   milestones: Milestone[]
   activities: Activity[]
+  costItems: CostItem[]
+  cashAccounts: CashAccount[]
+  claims: Claim[]
+  proposals: Proposal[]
 }
 
 /** Organisations and accounts, used by the demo directory views. */
@@ -231,6 +390,13 @@ export interface ViewState {
   messages: Message[]
   milestones: Milestone[]
   activities: Activity[]
+  costItems: CostItem[]
+  /** Only the acting user's own accounts: the other side's cash position is theirs. */
+  cashAccounts: CashAccount[]
+  /** Company memory. Filtered by visibility, same as every other item. */
+  claims: Claim[]
+  /** Agent drafts waiting for a human decision. */
+  proposals: Proposal[]
 }
 
 export type NexusErrorCode =

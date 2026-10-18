@@ -11,7 +11,7 @@
 import type { Database } from './types.ts'
 
 /** Bump this whenever `Database` changes shape, and add the matching step below. */
-export const CURRENT_SCHEMA_VERSION = 1
+export const CURRENT_SCHEMA_VERSION = 2
 
 /**
  * Files written before versioning existed carry no `schemaVersion`. They are treated as
@@ -26,13 +26,37 @@ export interface MigrationStep {
   up: (db: Database) => void
 }
 
+function loose(value: unknown): Record<string, unknown> {
+  return value as Record<string, unknown>
+}
+
 /**
- * Ordered upgrade steps. Empty while the schema is at version 1 — add entries here as
- * the model evolves, e.g.
- *
- *   { from: 1, to: 2, up: (db) => { db.attachments = []; db.schemaVersion = 2 } }
+ * Ordered upgrade steps. Append a new step every time `CURRENT_SCHEMA_VERSION` moves.
  */
-export const MIGRATIONS: MigrationStep[] = []
+export const MIGRATIONS: MigrationStep[] = [
+  {
+    // Files written before versioning existed already match the v1 shape.
+    from: UNVERSIONED,
+    to: 1,
+    up: (db) => {
+      db.schemaVersion = 1
+    }
+  },
+  {
+    // V0.2: structured payment terms, cost items, cash accounts, claims, proposals.
+    from: 1,
+    to: 2,
+    up: (db) => {
+      db.costItems ??= []
+      db.cashAccounts ??= []
+      db.claims ??= []
+      db.proposals ??= []
+      for (const c of db.contracts) if (loose(c).paymentTerms === undefined) loose(c).paymentTerms = null
+      for (const v of db.versions) if (loose(v).paymentTerms === undefined) loose(v).paymentTerms = null
+      db.schemaVersion = 2
+    }
+  }
+]
 
 /** Structural check: enough to trust the file before running migrations on it. */
 export function looksLikeDatabase(value: unknown): value is Database {
@@ -72,12 +96,7 @@ export function migrateDatabase(raw: unknown, targetVersion: number = CURRENT_SC
     return { ok: false, reason: `数据文件来自更新的版本（v${declared}），请升级应用后再打开` }
   }
 
-  // Pre-versioning file: it already matches the shape version 1 introduced.
-  if (declared === UNVERSIONED) {
-    db.schemaVersion = targetVersion
-    return { ok: true, db, fromVersion: declared }
-  }
-
+  // Pre-versioning file: start it at 0 so it walks the same chain as everyone else.
   let version = declared
   while (version < targetVersion) {
     const step = MIGRATIONS.find((m) => m.from === version)

@@ -17,6 +17,7 @@ import {
   type Message,
   type Milestone,
   type MilestoneStatus,
+  type PaymentTerms,
   type Suggestion,
   type Transaction,
   type TransactionStatus,
@@ -311,6 +312,7 @@ export class NexusService {
       title: requireText(title, '合同名称', 100),
       status: 'draft',
       clauses,
+      paymentTerms: null,
       sharedWithCounterparty: false,
       sharedAt: null,
       finalVersionId: null,
@@ -353,6 +355,39 @@ export class NexusService {
     return contract
   }
 
+  /**
+   * Change the structured payment terms. This is what makes a commercial change
+   * machine-readable: the new version carries a terms snapshot, so the context engine
+   * can diff numbers instead of parsing prose.
+   */
+  updatePaymentTerms(actorId: string, contractId: string, terms: PaymentTerms | null): Contract {
+    const actor = this.user(actorId)
+    const { contract, tx } = this.contract(actor, contractId)
+    this.requireOwner(actor, tx)
+    this.requireEditable(contract)
+    if (terms) {
+      if (!Number.isFinite(terms.prepayRate) || terms.prepayRate < 0 || terms.prepayRate > 1) {
+        throw new NexusError('INVALID_INPUT', '预付款比例需在 0 到 1 之间')
+      }
+      if (!Number.isInteger(terms.settlementDays) || terms.settlementDays < 0 || terms.settlementDays > 365) {
+        throw new NexusError('INVALID_INPUT', '账期天数需在 0 到 365 之间')
+      }
+      let total = terms.prepayRate
+      for (const i of terms.instalments) {
+        if (!Number.isFinite(i.rate) || i.rate < 0) throw new NexusError('INVALID_INPUT', '分期比例不能为负')
+        total += i.rate
+      }
+      if (total > 1.000001) throw new NexusError('INVALID_INPUT', '预付款与分期比例合计不能超过 100%')
+      contract.paymentTerms = structuredClone(terms)
+    } else {
+      contract.paymentTerms = null
+    }
+    contract.updatedAt = this.clock.now()
+    this.snapshot(actor, contract, '付款条款变更', '更新结构化付款条款', true)
+    this.commit()
+    return contract
+  }
+
   private snapshot(actor: User, contract: Contract, label: string, note: string, log: boolean): ContractVersion {
     const number = this.db.versions.filter((v) => v.contractId === contract.id).length + 1
     const v: ContractVersion = {
@@ -362,6 +397,7 @@ export class NexusService {
       label,
       note,
       clauses: contract.clauses.map((c) => ({ ...c })),
+      paymentTerms: contract.paymentTerms ? structuredClone(contract.paymentTerms) : null,
       authorId: actor.id,
       createdAt: this.clock.now()
     }

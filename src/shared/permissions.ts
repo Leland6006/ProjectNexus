@@ -12,6 +12,9 @@ import type {
   Visibility
 } from './types.ts'
 
+// NOTE: do not import ./context.ts here — context depends on this module. The claim
+// filter below is intentionally inlined so the dependency stays one-way.
+
 /**
  * Organisations that granted an external counsel access to a transaction.
  * Empty for everyone else.
@@ -165,6 +168,25 @@ export function buildViewState(db: Database, userId: string, opts: ViewOptions =
 
   const milestones = db.milestones.filter((m) => visibleTxIds.has(m.transactionId))
 
+  const costItems = db.costItems.filter((c) => {
+    const tx = txById.get(c.transactionId)
+    return !!tx && visibleTxIds.has(c.transactionId) && canSeeItem(user, tx, c, asOrgId)
+  })
+
+  const cashAccounts = db.cashAccounts.filter((a) => a.orgId === user.orgId)
+
+  const claims = db.claims.filter((c) => {
+    if (c.transactionId === null) return c.orgId === user.orgId
+    const tx = txById.get(c.transactionId)
+    return !!tx && visibleTxIds.has(c.transactionId) && canSeeItem(user, tx, c, asOrgId)
+  })
+
+  const proposals = db.proposals.filter((p) => {
+    const tx = txById.get(p.transactionId)
+    if (!tx || !visibleTxIds.has(p.transactionId)) return false
+    return effectiveOrgId(user, tx, asOrgId) === p.orgId
+  })
+
   const activities = db.activities.filter((a) => {
     const tx = txById.get(a.transactionId)
     if (!tx || !visibleTxIds.has(a.transactionId)) return false
@@ -223,6 +245,10 @@ export function buildViewState(db: Database, userId: string, opts: ViewOptions =
     suggestions,
     messages,
     milestones,
-    activities
+    activities,
+    costItems,
+    cashAccounts,
+    claims,
+    proposals
   }
 }

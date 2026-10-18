@@ -2,12 +2,14 @@
 // main process, so the renderer can never claim to be someone else on a per-call basis.
 // (Still a DEMO: switching accounts is unauthenticated by design.)
 
+import { mergeClaim } from '../shared/context.ts'
 import { buildViewState } from '../shared/permissions.ts'
+import { NO_LLM, runOrchestrator, approveProposal, rejectProposal, type LlmClient } from '../shared/orchestrator.ts'
 import { createSeedDatabase, DEFAULT_USER_ID } from '../shared/seed.ts'
 import { NexusService, type ActorContext } from '../shared/service.ts'
 import type { ApiMethod, ApiResult } from '../shared/api.ts'
 import { API_METHODS } from '../shared/api.ts'
-import { NexusError, type Database } from '../shared/types.ts'
+import { NexusError, type Database, type PaymentTerms } from '../shared/types.ts'
 
 export interface Session {
   service: NexusService
@@ -28,6 +30,37 @@ export function createSession(db: Database, currentUserId: string, onChange: (s:
   }
   session.service = new NexusService(db, () => onChange(session), undefined, session.actor)
   return session
+}
+
+/**
+ * No model is wired up in this build, so every judgement step is skipped and only the
+ * deterministic finance analysis runs. Replace this with a real client (see
+ * LlmClient) and the same graph lights up end to end.
+ */
+let llmClient: LlmClient | null = NO_LLM
+
+export function setLlmClient(client: LlmClient | null): void {
+  llmClient = client
+}
+
+/** Runs the agent graph for a transaction and persists what it produced. */
+export async function runAgentsFor(session: Session, transactionId: string): Promise<void> {
+  const db = session.service.db
+  try {
+    const result = await runOrchestrator({
+      db,
+      userId: session.currentUserId,
+      transactionId,
+      llm: llmClient,
+      now: new Date().toISOString(),
+      representingOrgId: session.actor.representingOrgId
+    })
+    for (const c of result.claims) mergeClaim(db.claims, c)
+    if (result.proposal) db.proposals.push(result.proposal)
+  } catch (err) {
+    console.error('[agents] orchestration failed', err)
+  }
+  session.service.notifyChanged()
 }
 
 function str(v: unknown): string {
@@ -108,6 +141,19 @@ export function handleCall(session: Session, method: unknown, args: unknown[]): 
       case 'updateClauses':
         if (!Array.isArray(args[1])) throw new NexusError('INVALID_INPUT', '参数无效')
         s.updateClauses(me, str(args[0]), args[1])
+        break
+      case 'updatePaymentTerms': {
+        const raw = args[1] === null || args[1] === undefined ? null : obj<PaymentTerms>(args[1])
+        const contract = s.updatePaymentTerms(me, str(args[0]), raw)
+        // Event-driven: a commercial change is analysed without being asked.
+        void runAgentsFor(session, contract.transactionId)
+        break
+      }
+      case 'approveProposal':
+        approveProposal({ db: s.db, proposalId: str(args[0]), userId: me, at: new Date().toISOString() })
+        break
+      case 'rejectProposal':
+        rejectProposal({ db: s.db, proposalId: str(args[0]), userId: me, at: new Date().toISOString() })
         break
       case 'saveVersion':
         s.saveVersion(me, str(args[0]), str(args[1]), args[2] === undefined ? '' : str(args[2]))

@@ -47,11 +47,14 @@ test('a missing migration step is reported instead of discarding data', () => {
 
 test('migration steps run in order and bump the version', () => {
   const db = createSeedDatabase()
+  db.schemaVersion = 1
   const seen: number[] = []
   const steps: MigrationStep[] = [
     { from: 1, to: 2, up: (d) => void (seen.push(d.schemaVersion), (d.schemaVersion = 2)) },
     { from: 2, to: 3, up: (d) => void (seen.push(d.schemaVersion), (d.schemaVersion = 3)) }
   ]
+  const original = MIGRATIONS.slice()
+  MIGRATIONS.length = 0
   steps.forEach((s) => MIGRATIONS.push(s))
   try {
     const r = migrateDatabase(db, 3)
@@ -60,6 +63,7 @@ test('migration steps run in order and bump the version', () => {
     assert.equal(db.schemaVersion, 3)
   } finally {
     MIGRATIONS.length = 0
+    original.forEach((s) => MIGRATIONS.push(s))
   }
 })
 

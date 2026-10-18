@@ -1,15 +1,21 @@
 // Fictional demo data. All companies, people and contract text are invented.
 
+import { CURRENT_SCHEMA_VERSION } from './migrations.ts'
 import type {
   Activity,
+  CashAccount,
+  Claim,
   Clause,
   Comment,
   Contract,
   ContractVersion,
+  CostItem,
   Database,
   Message,
   Milestone,
   Organization,
+  PaymentTerms,
+  Proposal,
   Suggestion,
   Transaction,
   User
@@ -77,8 +83,9 @@ const ver = (
   note: string,
   clauses: Clause[],
   authorId: string,
-  createdAt: string
-): ContractVersion => ({ id, contractId, number, label, note, clauses, authorId, createdAt })
+  createdAt: string,
+  paymentTerms: PaymentTerms | null = null
+): ContractVersion => ({ id, contractId, number, label, note, clauses, paymentTerms, authorId, createdAt })
 
 const transactions: Transaction[] = [
   {
@@ -134,6 +141,9 @@ const transactions: Transaction[] = [
   }
 ]
 
+/** Structured mirror of ct_equip's payment clause. See types.ts for why this exists. */
+const EQUIP_TERMS: PaymentTerms = { prepayRate: 0.5, instalments: [], settlementDays: 15 }
+
 const contracts: Contract[] = [
   {
     id: 'ct_equip',
@@ -141,6 +151,7 @@ const contracts: Contract[] = [
     title: '智能巡检机器人采购合同',
     status: 'negotiating',
     clauses: V3_CLAUSES,
+    paymentTerms: { prepayRate: 0.5, instalments: [], settlementDays: 15 },
     sharedWithCounterparty: true,
     sharedAt: ts('10-08'),
     finalVersionId: null,
@@ -158,6 +169,7 @@ const contracts: Contract[] = [
       c('cl_s1', '第一条 服务内容', '<p>服务方按照附件《需求说明书》向委托方提供系统实施与运维支持服务。</p>'),
       c('cl_s2', '第二条 服务费用与支付', '<p>服务费用共计人民币 560,000 元，按里程碑分期支付。</p>')
     ],
+    paymentTerms: null,
     sharedWithCounterparty: false,
     sharedAt: null,
     finalVersionId: null,
@@ -176,6 +188,7 @@ const contracts: Contract[] = [
       c('cl_n2', '第二条 保密义务', '<p>接收方应以不低于保护自身同类信息的谨慎程度保护保密信息，不得向任何第三方披露。</p>'),
       c('cl_n3', '第三条 保密期限', '<p>保密义务自本协议签署之日起生效，最长不超过 5 年。</p>')
     ],
+    paymentTerms: null,
     sharedWithCounterparty: true,
     sharedAt: ts('09-29'),
     finalVersionId: 'ver_nda1',
@@ -187,9 +200,19 @@ const contracts: Contract[] = [
 ]
 
 const versions: ContractVersion[] = [
-  ver('ver_e1', 'ct_equip', 1, '初稿', '启明内部起草，基于「设备采购合同」模板', V1_CLAUSES, 'u_a_biz', ts('10-05', '11:00')),
-  ver('ver_e2', 'ct_equip', 2, '发送对方版本', '补充发票要求与保密条款后发送远航', V2_CLAUSES, 'u_a_legal', ts('10-08', '16:00')),
-  ver('ver_e3', 'ct_equip', 3, '第二轮协商稿', '接受远航关于交付周期的修改建议', V3_CLAUSES, 'u_a_biz', ts('10-14', '16:00')),
+  ver('ver_e1', 'ct_equip', 1, '初稿', '启明内部起草，基于「设备采购合同」模板', V1_CLAUSES, 'u_a_biz', ts('10-05', '11:00'), EQUIP_TERMS),
+  ver('ver_e2', 'ct_equip', 2, '发送对方版本', '补充发票要求与保密条款后发送远航', V2_CLAUSES, 'u_a_legal', ts('10-08', '16:00'), EQUIP_TERMS),
+  ver(
+    'ver_e3',
+    'ct_equip',
+    3,
+    '第二轮协商稿',
+    '接受远航关于交付周期的修改建议',
+    V3_CLAUSES,
+    'u_a_biz',
+    ts('10-14', '16:00'),
+    EQUIP_TERMS
+  ),
   ver('ver_s1', 'ct_service', 1, '初稿', '空白合同起草', contracts[1].clauses, 'u_a_biz', ts('10-14', '14:30')),
   ver('ver_nda1', 'ct_nda', 1, '签署版', '双方确认的最终版本', contracts[2].clauses, 'u_b_biz', ts('10-09', '15:00'))
 ]
@@ -329,10 +352,45 @@ const activities: Activity[] = [
 // The service layer keeps the invariant "a shared contract's counterparty has joined/been invited".
 // tx_service is 'invited' with an unshared contract, which is a valid draft state.
 
+const costItems: CostItem[] = [
+  {
+    id: 'cost_1',
+    transactionId: 'tx_equip',
+    orgId: ORG_A,
+    name: '核心传感器备货款',
+    amount: 620_000,
+    dueDate: '2026-11-10',
+    status: 'committed',
+    visibility: 'internal',
+    createdBy: 'u_a_biz',
+    createdAt: ts('10-16', '09:30')
+  },
+  {
+    id: 'cost_2',
+    transactionId: 'tx_equip',
+    orgId: ORG_A,
+    name: '现场实施人工',
+    amount: 96_000,
+    dueDate: '2026-12-01',
+    status: 'planned',
+    visibility: 'internal',
+    createdBy: 'u_a_biz',
+    createdAt: ts('10-16', '09:35')
+  }
+]
+
+const cashAccounts: CashAccount[] = [
+  { id: 'cash_a', orgId: ORG_A, label: '基本存款账户', openingBalance: 150_000, asOf: '2026-10-18' }
+]
+
+// Company memory starts empty: claims are created by agents and promoted by people.
+const claims: Claim[] = []
+const proposals: Proposal[] = []
+
 export function createSeedDatabase(): Database {
   // Deep copy so callers can mutate freely without touching module-level constants.
   return structuredClone({
-    schemaVersion: 1 as const,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     organizations,
     users,
     transactions,
@@ -342,6 +400,10 @@ export function createSeedDatabase(): Database {
     suggestions,
     messages,
     milestones,
-    activities
+    activities,
+    costItems,
+    cashAccounts,
+    claims,
+    proposals
   })
 }

@@ -63,6 +63,24 @@ Organization、User、Transaction、Contract、ContractVersion、Comment、Sugge
 
 `contextIsolation`、`sandbox` 开启，`nodeIntegration` 关闭；CSP；拒绝所有权限请求；阻止导航与新窗口（http/https 链接交给系统浏览器）；IPC 仅一个通道，方法名与参数在主进程校验。
 
+## Nexus Context Engine（V0.2）
+
+目标：不同专业的 Agent 围绕同一家企业、同一笔交易协同，而不是各自回答孤立问题。它建立在既有业务对象之上，不推翻它们。
+
+| 文件 | 职责 |
+|---|---|
+| `src/shared/events.ts` | 把结构化条款快照的差异变成带数值的领域事件 |
+| `src/shared/finance.ts` | 现金流测算。**纯计算，不调用模型** |
+| `src/shared/context.ts` | Claim（企业记忆单元）、Agent 上下文分发、事实晋升规则 |
+| `src/shared/orchestrator.ts` | 确定性 DAG + 三个标注的模型节点 + 人工确认闭环 |
+
+两条硬性规则：
+
+1. **Agent 是主体，不是提示词。** Agent 从不拿到数据库，只拿到由 `buildViewState` 同一套权限函数裁剪出的 context bundle，其权限上限恒等于发起它的用户。`internal` 的内部意见之所以进不了财务 Agent，是因为它根本没被分发过去，而不是因为提示词要求保密。所有 Agent 都不接收评论与活动流，只接收结构化 Claim。
+2. **事实、假设、建议分开存。** `Claim.status` 为 `confirmed | inferred | recommended`。只有人类确认能把 `inferred` 晋升为 `confirmed`；`inferred` 永不覆盖已确认事实（`mergeClaim`）；Agent 推理只能用 `confirmed` 作为前提（`selectPremises`）。这是阻止多个模型互相引用彼此猜测的唯一可靠闸门。
+
+模型只用在需要判断的地方（法务与经营解读）和最终汇总；路由、算术、权限过滤都是普通代码。Agent 的产出一律是 `pending` 的 `Proposal`，带 `baseVersionId`，合同一旦被改动就拒绝批准（乐观并发）。
+
 ## 未来云端架构
 
 `src/shared` 的业务引擎与权限函数可直接迁移到服务端；渲染进程的 `window.nexus.call` 替换为 HTTPS/WebSocket 客户端；
