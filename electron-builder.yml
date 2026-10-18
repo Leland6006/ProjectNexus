@@ -1,0 +1,17 @@
+appId: com.projectnexus.desktop
+productName: Project Nexus
+directories:
+  buildResources: build
+  output: release
+files:
+  - out/**/*
+  - package.json
+mac:
+  category: public.app-category.business
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  # V0.1 builds are NOT code-signed or notarized.
+  # Signing needs an Apple Developer ID certificate; see README "Packaging".
+  identity: null

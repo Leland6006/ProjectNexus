@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 font-sans text-sm text-ink-900 antialiased;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Let the macOS title bar area drag the window; interactive children opt out. */
+.drag {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Contract editor typography */
+.contract-body p {
+  @apply my-1.5 leading-7;
+}
+.contract-body ul {
+  @apply my-1.5 list-disc pl-6;
+}
+.contract-body ol {
+  @apply my-1.5 list-decimal pl-6;
+}
+.ProseMirror {
+  @apply min-h-[72px] rounded-md px-3 py-2 outline-none;
+}
+.ProseMirror p {
+  @apply my-1.5 leading-7;
+}
+.ProseMirror ul {
+  @apply my-1.5 list-disc pl-6;
+}
+.ProseMirror ol {
+  @apply my-1.5 list-decimal pl-6;
+}
+
+.diff-ins {
+  @apply rounded-sm bg-emerald-100 text-emerald-900;
+}
+.diff-del {
+  @apply rounded-sm bg-rose-100 text-rose-800 line-through;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full border-2 border-solid border-transparent bg-slate-300 bg-clip-padding;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400;
+}

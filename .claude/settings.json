@@ -1,0 +1,14 @@
+{
+  "sandbox": {
+    "network": {
+      "allowedDomains": [
+        "nodejs.org",
+        "registry.npmjs.org",
+        "github.com",
+        "api.github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com"
+      ]
+    }
+  }
+}
