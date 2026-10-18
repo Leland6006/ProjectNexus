@@ -191,7 +191,8 @@ export interface Activity {
 }
 
 export interface Database {
-  schemaVersion: 1
+  /** Storage schema version; see src/shared/migrations.ts for the upgrade chain. */
+  schemaVersion: number
   organizations: Organization[]
   users: User[]
   transactions: Transaction[]
@@ -204,11 +205,24 @@ export interface Database {
   activities: Activity[]
 }
 
+/** Organisations and accounts, used by the demo directory views. */
+export interface Directory {
+  organizations: Organization[]
+  users: User[]
+}
+
 /** What the renderer receives: already filtered for the acting user. */
 export interface ViewState {
   currentUserId: string
+  /** Organisation an external counsel is currently acting for; null for everybody else. */
+  representingOrgId: string | null
   organizations: Organization[]
   users: User[]
+  /**
+   * Full account list for the demo account switcher. Populated only in the local demo
+   * build; a server must leave this null so tenants cannot enumerate each other.
+   */
+  demoAccounts: Directory | null
   transactions: Transaction[]
   contracts: Contract[]
   versions: ContractVersion[]

@@ -12,6 +12,20 @@ mac:
     - target: dmg
       arch:
         - arm64
-  # V0.1 builds are NOT code-signed or notarized.
-  # Signing needs an Apple Developer ID certificate; see README "Packaging".
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  # V0.1 builds are NOT signed or notarized.
+  #
+  # To ship a signed build you need an Apple Developer account. Replace the two lines
+  # below and export the matching environment variables before `npm run dist`:
+  #
+  #   identity: "Developer ID Application: Your Name (TEAMID)"
+  #   notarize: true
+  #
+  #   export APPLE_ID="you@example.com"
+  #   export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+  #   export APPLE_TEAM_ID="TEAMID"
+  #
+  # See README "打包与签名".
   identity: null
+  notarize: false

@@ -44,12 +44,46 @@ export function tokenize(text: string): string[] {
   return text.match(/[A-Za-z0-9_]+|\s+|[一-鿿]|[^\sA-Za-z0-9_一-鿿]/g) ?? []
 }
 
+/**
+ * Largest DP table we are willing to allocate (cells). The table is Uint32, so this caps
+ * the temporary allocation at roughly 4 MB.
+ */
+const MAX_DP_CELLS = 1_000_000
+
 /** Longest-common-subsequence diff over tokens. */
 export function diffTokens(a: string[], b: string[]): DiffSegment[] {
+  // Trim the shared head and tail first. Contract edits usually touch one clause inside a
+  // long document, so this keeps the quadratic table proportional to the changed region
+  // instead of to the whole text. Trimming is exact: it cannot change the LCS.
+  let head = 0
+  while (head < a.length && head < b.length && a[head] === b[head]) head++
+  let tailA = a.length
+  let tailB = b.length
+  while (tailA > head && tailB > head && a[tailA - 1] === b[tailB - 1]) {
+    tailA--
+    tailB--
+  }
+
+  const segments: DiffSegment[] = []
+  const push = (op: DiffOp, text: string): void => {
+    if (!text) return
+    const last = segments[segments.length - 1]
+    if (last && last.op === op) last.text += text
+    else segments.push({ op, text })
+  }
+
+  push('equal', a.slice(0, head).join(''))
+  for (const seg of diffCore(a.slice(head, tailA), b.slice(head, tailB))) push(seg.op, seg.text)
+  push('equal', a.slice(tailA).join(''))
+  return segments
+}
+
+/** LCS over the already-trimmed token ranges. */
+function diffCore(a: string[], b: string[]): DiffSegment[] {
   const n = a.length
   const m = b.length
   // Guard against pathological sizes: fall back to a whole-block replace.
-  if (n * m > 4_000_000) {
+  if (n * m > MAX_DP_CELLS) {
     const out: DiffSegment[] = []
     if (n) out.push({ op: 'delete', text: a.join('') })
     if (m) out.push({ op: 'insert', text: b.join('') })

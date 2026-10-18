@@ -1,8 +1,17 @@
-import type { Contract, Organization, Transaction, User, ViewState } from '@shared/types'
+import type { Contract, Directory, Organization, Transaction, User, ViewState } from '@shared/types'
 import { effectiveOrgId, isOwnerMember, isPartyMember } from '@shared/permissions'
 
 export function currentUser(s: ViewState): User {
   return s.users.find((u) => u.id === s.currentUserId)!
+}
+
+/**
+ * Organisation / account list for directory-style views. The demo build ships the full
+ * list in `demoAccounts`; when this runs against a server it is null and the caller
+ * falls back to the already-filtered organisations and users.
+ */
+export function directory(s: ViewState): Directory {
+  return s.demoAccounts ?? { organizations: s.organizations, users: s.users }
 }
 
 export function orgOf(s: ViewState, id: string): Organization | undefined {
@@ -32,7 +41,7 @@ export interface Access {
 
 export function accessFor(s: ViewState, tx: Transaction): Access {
   const user = currentUser(s)
-  const orgId = effectiveOrgId(user, tx)
+  const orgId = effectiveOrgId(user, tx, s.representingOrgId)
   return {
     orgId,
     isOwner: isOwnerMember(user, tx),
@@ -48,4 +57,18 @@ export function txOfContract(s: ViewState, c: Contract): Transaction | undefined
 
 export function otherPartyId(tx: Transaction, myOrgId: string | null): string {
   return myOrgId === tx.initiatorOrgId ? tx.counterpartyOrgId : tx.initiatorOrgId
+}
+
+/**
+ * Organisations that granted the current external counsel access, across every
+ * transaction they can see. More than one means the counsel has to pick a side.
+ */
+export function counselGrantOrgIds(s: ViewState): string[] {
+  const ids = new Set<string>()
+  for (const t of s.transactions) {
+    for (const g of t.counselGrants) {
+      if (g.userId === s.currentUserId) ids.add(g.grantedByOrgId)
+    }
+  }
+  return [...ids]
 }

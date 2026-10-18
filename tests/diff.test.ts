@@ -49,3 +49,43 @@ test('diffClauses detects added, removed, modified and unchanged', () => {
 test('identical text yields a single equal segment', () => {
   assert.deepEqual(diffText('abc', 'abc'), [{ op: 'equal', text: 'abc' }])
 })
+
+function reconstruct(segs: { op: string; text: string }[], keep: 'old' | 'new'): string {
+  const drop = keep === 'old' ? 'insert' : 'delete'
+  return segs.filter((s) => s.op !== drop).map((s) => s.text).join('')
+}
+
+test('a single edit inside a long document stays exact', () => {
+  const head = '甲方应当按照约定交付设备并承担运输费用。'.repeat(400)
+  const tail = '双方另有书面约定的从其约定。'.repeat(400)
+  const a = `${head}交付期为30日。${tail}`
+  const b = `${head}交付期为45日。${tail}`
+
+  const segs = diffText(a, b)
+  assert.equal(reconstruct(segs, 'old'), a)
+  assert.equal(reconstruct(segs, 'new'), b)
+  // Shared head and tail must collapse into single equal blocks, not per-character noise.
+  assert.ok(segs.filter((s) => s.op === 'equal').length <= 2, 'head/tail were not trimmed')
+  assert.ok(segs.some((s) => s.op === 'delete' && s.text === '30'))
+  assert.ok(segs.some((s) => s.op === 'insert' && s.text === '45'))
+})
+
+test('a long document with one edit stays responsive', () => {
+  const head = '供方应在预付款到账后完成交付。'.repeat(600)
+  const tail = '需方应在收货后完成验收。'.repeat(600)
+  const a = `${head}违约金上限为10%。${tail}`
+  const b = `${head}违约金上限为5%。${tail}`
+
+  const started = Date.now()
+  diffText(a, b)
+  assert.ok(Date.now() - started < 2000, `diff took ${Date.now() - started}ms on a 15k token document`)
+})
+
+test('a wholesale rewrite degrades to a block replacement instead of exploding', () => {
+  const a = '甲'.repeat(1500)
+  const b = '乙'.repeat(1500)
+  const segs = diffText(a, b)
+  assert.deepEqual(segs.map((s) => s.op), ['delete', 'insert'])
+  assert.equal(reconstruct(segs, 'old'), a)
+  assert.equal(reconstruct(segs, 'new'), b)
+})

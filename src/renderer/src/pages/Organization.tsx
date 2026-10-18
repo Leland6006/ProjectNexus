@@ -1,17 +1,18 @@
 import { Building2, Scale } from 'lucide-react'
 import { ROLE_LABEL } from '@shared/types'
 import { Badge, Card, CardHeader, PageHeader } from '@/components/ui'
-import { currentUser } from '@/lib/selectors'
+import { currentUser, directory } from '@/lib/selectors'
 import { useView } from '@/store'
 
 export default function Organization() {
   const s = useView()
   const me = currentUser(s)
+  const { organizations, users } = directory(s)
   return (
     <div className="mx-auto max-w-4xl p-6">
       <PageHeader title="企业与成员" subtitle="演示环境中的虚构企业与账号。所有名称均为虚构。" />
       <div className="space-y-4">
-        {s.organizations.map((o) => (
+        {organizations.map((o) => (
           <Card key={o.id}>
             <CardHeader
               title={
@@ -23,7 +24,7 @@ export default function Organization() {
               action={<Badge tone={o.kind === 'law_firm' ? 'purple' : 'indigo'}>{o.kind === 'law_firm' ? '律师事务所' : '企业'}</Badge>}
             />
             <ul>
-              {s.users
+              {users
                 .filter((u) => u.orgId === o.id)
                 .map((u) => (
                   <li key={u.id} className="flex items-center justify-between border-t border-slate-100 px-4 py-2.5 first:border-t-0">

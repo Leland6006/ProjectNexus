@@ -21,7 +21,7 @@
 - 多企业在线协作、邀请与成员管理
 - 服务端强制的合同权限隔离与审计日志
 - 实时同步与并发编辑冲突处理
-- GitHub Actions：自动测试、构建（尚未配置，需先验证流程）
+- GitHub Actions：自动 typecheck、测试与构建（已在 `.github/workflows/ci.yml` 配置）
 
 ## V0.3 — 企业试用
 

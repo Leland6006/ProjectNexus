@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { createSeedDatabase, DEFAULT_USER_ID } from '../shared/seed.ts'
+import { migrateDatabase } from '../shared/migrations.ts'
 import type { Database } from '../shared/types.ts'
 
 export interface PersistedState {
@@ -29,25 +30,38 @@ export class JsonStore {
 
   load(): PersistedState {
     if (!existsSync(this.file)) return this.fresh()
+
+    let parsed: unknown
     try {
-      const parsed = JSON.parse(readFileSync(this.file, 'utf8')) as Partial<PersistedState>
-      const db = parsed.db
-      if (!db || db.schemaVersion !== 1 || !Array.isArray(db.transactions) || !Array.isArray(db.users)) {
-        throw new Error('unexpected data shape')
-      }
-      const userOk = db.users.some((u) => u.id === parsed.currentUserId)
-      return { db, currentUserId: userOk ? parsed.currentUserId! : DEFAULT_USER_ID }
+      parsed = JSON.parse(readFileSync(this.file, 'utf8'))
     } catch (err) {
-      // Keep the unreadable file for inspection instead of silently destroying it.
-      const backup = `${this.file}.corrupt-${Date.now()}`
-      try {
-        renameSync(this.file, backup)
-      } catch {
-        /* ignore */
-      }
-      console.error(`[store] could not read data file (${(err as Error).message}); moved to ${backup}`)
-      return this.fresh()
+      return this.archiveAndReset(err, 'corrupt')
     }
+
+    const db = (parsed as { db?: unknown } | null)?.db
+    const migrated = migrateDatabase(db)
+    if (!migrated.ok) return this.archiveAndReset(new Error(migrated.reason), 'incompatible')
+
+    const declared = (parsed as { currentUserId?: unknown }).currentUserId
+    const currentUserId =
+      typeof declared === 'string' && migrated.db.users.some((u) => u.id === declared) ? declared : DEFAULT_USER_ID
+    const state: PersistedState = { db: migrated.db, currentUserId }
+
+    // Persist an upgrade immediately so a crash cannot leave the old file in place.
+    if (migrated.fromVersion !== migrated.db.schemaVersion) this.writeNow(state)
+    return state
+  }
+
+  /** Keep the unusable file for inspection instead of silently destroying it. */
+  private archiveAndReset(err: unknown, reason: 'corrupt' | 'incompatible'): PersistedState {
+    const backup = `${this.file}.${reason}-${Date.now()}`
+    try {
+      renameSync(this.file, backup)
+    } catch {
+      /* ignore */
+    }
+    console.error(`[store] could not use data file (${(err as Error).message}); moved to ${backup}`)
+    return this.fresh()
   }
 
   private fresh(): PersistedState {

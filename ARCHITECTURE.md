@@ -12,7 +12,12 @@ Renderer (React)  --window.nexus.call(method, ...args)-->  Preload  --IPC 'nexus
                                                        Database (内存) --JsonStore--> nexus-data.json
 ```
 
-渲染进程**从不**拿到完整数据库。每次调用后，主进程用 `buildViewState(db, currentUserId)` 生成只包含该账号有权查看内容的快照返回。
+渲染进程**从不**拿到完整数据库。每次调用后，主进程用
+`buildViewState(db, currentUserId, { representingOrgId, demoDirectory })` 生成只包含该账号有权查看内容的快照返回。
+
+- `representingOrgId`：外部律师被双方同时授权时指定当前代表哪一方，否则只能看到第一个授权方的数据。
+- `demoDirectory`：仅本地演示开启，额外返回全部演示账号供左下角切换器使用；服务端必须保持关闭。
+- 默认返回的 `users` / `organizations` 只含与可见交易相关的组织、以及可见内容的作者，避免把整个客户名单发给每个客户端。
 
 ## 目录
 
@@ -21,8 +26,10 @@ Renderer (React)  --window.nexus.call(method, ...args)-->  Preload  --IPC 'nexus
 | `src/shared/types.ts` | 领域模型与状态/角色标签 |
 | `src/shared/permissions.ts` | 权限模型与 `buildViewState` |
 | `src/shared/service.ts` | 全部业务操作 |
-| `src/shared/diff.ts` | 版本差异（条款匹配 + LCS 字/词级比较） |
-| `src/shared/sanitize.ts` | 合同 HTML 清理 |
+| `src/shared/diff.ts` | 版本差异（条款匹配 + LCS 字/词级比较，先裁剪公共前后缀） |
+| `src/shared/sanitize.ts` | 合同 HTML 清理（标签白名单 + 丢弃全部属性） |
+| `src/shared/migrations.ts` | 存储 schema 版本与升级链 |
+| `src/shared/editorRules.ts` | 编辑器规则（可见范围选项、确认最终版条件、版本排序） |
 | `src/shared/templates.ts` `seed.ts` | 虚构模板与演示数据 |
 | `src/main/` | 窗口、IPC、`JsonStore` |
 | `src/preload/index.ts` | 单一桥接函数 |
@@ -48,7 +55,9 @@ Organization、User、Transaction、Contract、ContractVersion、Comment、Sugge
 ## 本地存储
 
 单个 `nexus-data.json`（Electron `userData` 目录），写入使用“临时文件 + rename”原子替换，文件权限 600，写入防抖 150ms，退出时 flush。
-读取失败时旧文件被改名为 `.corrupt-<时间戳>` 保留，并恢复演示数据，不会静默丢弃。
+
+`src/shared/migrations.ts` 持有 schema 版本与升级链：`CURRENT_SCHEMA_VERSION` 随 `Database` 结构变化递增，每个 `MIGRATIONS` 条目负责一步升级。
+读取时按版本逐级迁移，迁移结果立即写回磁盘。**只有**文件无法解析（改名 `.corrupt-<时间戳>`）或缺少迁移步骤、来自更新版本（改名 `.incompatible-<时间戳>`）时才会归档并恢复演示数据——不会静默丢弃用户数据。
 
 ## Electron 安全
 

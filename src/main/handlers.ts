@@ -4,7 +4,7 @@
 
 import { buildViewState } from '../shared/permissions.ts'
 import { createSeedDatabase, DEFAULT_USER_ID } from '../shared/seed.ts'
-import { NexusService } from '../shared/service.ts'
+import { NexusService, type ActorContext } from '../shared/service.ts'
 import type { ApiMethod, ApiResult } from '../shared/api.ts'
 import { API_METHODS } from '../shared/api.ts'
 import { NexusError, type Database } from '../shared/types.ts'
@@ -12,11 +12,21 @@ import { NexusError, type Database } from '../shared/types.ts'
 export interface Session {
   service: NexusService
   currentUserId: string
+  /**
+   * Organisation an external counsel is acting for, null for everybody else. A counsel
+   * granted by both parties must pick one; see permissions.effectiveOrgId.
+   * The service reads through the same object, so both stay in sync.
+   */
+  actor: ActorContext
 }
 
 export function createSession(db: Database, currentUserId: string, onChange: (s: Session) => void): Session {
-  const session: Session = { service: null as unknown as NexusService, currentUserId }
-  session.service = new NexusService(db, () => onChange(session))
+  const session: Session = {
+    service: null as unknown as NexusService,
+    currentUserId,
+    actor: { representingOrgId: null }
+  }
+  session.service = new NexusService(db, () => onChange(session), undefined, session.actor)
   return session
 }
 
@@ -45,6 +55,24 @@ export function handleCall(session: Session, method: unknown, args: unknown[]): 
         const id = str(args[0])
         if (!s.db.users.some((u) => u.id === id)) throw new NexusError('NOT_FOUND', '账号不存在')
         session.currentUserId = id
+        // A different account cannot inherit the previous one's delegated authority.
+        session.actor.representingOrgId = null
+        s.notifyChanged()
+        break
+      }
+      case 'setRepresentingOrg': {
+        const orgId = args[0] === null || args[0] === undefined ? null : str(args[0])
+        const user = s.db.users.find((u) => u.id === me)
+        if (!user || user.role !== 'external_counsel') {
+          throw new NexusError('PERMISSION_DENIED', '只有外部律师可以切换代表的委托方')
+        }
+        if (orgId !== null) {
+          const granted = s.db.transactions.some((t) =>
+            t.counselGrants.some((g) => g.userId === me && g.grantedByOrgId === orgId)
+          )
+          if (!granted) throw new NexusError('PERMISSION_DENIED', '该律师未被此企业授权')
+        }
+        session.actor.representingOrgId = orgId
         s.notifyChanged()
         break
       }
@@ -52,6 +80,7 @@ export function handleCall(session: Session, method: unknown, args: unknown[]): 
         const fresh = createSeedDatabase()
         Object.assign(s.db, fresh)
         session.currentUserId = DEFAULT_USER_ID
+        session.actor.representingOrgId = null
         s.notifyChanged()
         break
       }
@@ -114,7 +143,14 @@ export function handleCall(session: Session, method: unknown, args: unknown[]): 
         s.updateMilestone(me, str(args[0]), obj(args[1]))
         break
     }
-    return { ok: true, state: buildViewState(s.db, session.currentUserId) }
+    return {
+      ok: true,
+      state: buildViewState(s.db, session.currentUserId, {
+        representingOrgId: session.actor.representingOrgId,
+        // Local demo only: hand the renderer every account so it can switch between them.
+        demoDirectory: true
+      })
+    }
   } catch (err) {
     if (err instanceof NexusError) return { ok: false, code: err.code, message: err.message }
     console.error('[handlers] unexpected error', err)

@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Building2, ChevronDown, FileText, Handshake, LayoutDashboard, MessagesSquare, Settings as SettingsIcon, ShieldAlert, Workflow } from 'lucide-react'
 import { ROLE_LABEL } from '@shared/types'
 import { cn } from '@/lib/utils'
-import { currentUser, orgOf } from '@/lib/selectors'
+import { counselGrantOrgIds, currentUser, directory, orgOf } from '@/lib/selectors'
 import { useApp, useView, type Page } from '@/store'
 
 const NAV: { page: Page; label: string; icon: typeof LayoutDashboard }[] = [
@@ -22,11 +22,12 @@ function AccountSwitcher() {
   const [open, setOpen] = useState(false)
   const me = currentUser(s)
   const myOrg = orgOf(s, me.orgId)
+  const accounts = directory(s).users
 
   const choose = async (id: string): Promise<void> => {
     setOpen(false)
     if (id === me.id) return
-    const target = s.users.find((u) => u.id === id)!
+    const target = accounts.find((u) => u.id === id)!
     if (await act('switchUser', [id], `已切换为 ${target.name}`)) navigate({ page: 'dashboard' })
   }
 
@@ -52,7 +53,7 @@ function AccountSwitcher() {
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <ul role="listbox" className="absolute bottom-full left-3 right-3 z-20 mb-1 max-h-96 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
             <li className="px-2 py-1.5 text-xs text-ink-500">切换演示账号（仅本地模拟）</li>
-            {s.users.map((u) => (
+            {accounts.map((u) => (
               <li key={u.id}>
                 <button
                   role="option"
@@ -74,6 +75,40 @@ function AccountSwitcher() {
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * An external counsel may be authorised by both parties. When that happens they have to
+ * say who they are acting for, otherwise they would only ever see the first grant.
+ */
+function RepresentingOrgPicker() {
+  const s = useView()
+  const act = useApp((x) => x.act)
+  const me = currentUser(s)
+  const grantIds = counselGrantOrgIds(s)
+  if (me.role !== 'external_counsel' || grantIds.length === 0) return null
+
+  const current = s.representingOrgId && grantIds.includes(s.representingOrgId) ? s.representingOrgId : grantIds[0]
+  if (grantIds.length === 1) {
+    return <span className="text-xs text-ink-500">代表 {orgOf(s, current)?.shortName ?? current}</span>
+  }
+  return (
+    <label className="flex items-center gap-1.5 text-xs text-ink-500">
+      代表
+      <select
+        value={current}
+        aria-label="选择代表的委托企业"
+        onChange={(e) => void act('setRepresentingOrg', [e.target.value], `已切换为代表 ${orgOf(s, e.target.value)?.shortName}`)}
+        className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-ink-700"
+      >
+        {grantIds.map((id) => (
+          <option key={id} value={id}>
+            {orgOf(s, id)?.shortName ?? id}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }
 
@@ -116,8 +151,9 @@ export function Shell({ children }: { children: ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="drag flex h-12 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
-          <div className="no-drag flex items-center gap-2 text-xs text-ink-500">
+          <div className="no-drag flex items-center gap-3 text-xs text-ink-500">
             <span className="font-medium text-ink-700">{myOrg?.name}</span>
+            <RepresentingOrgPicker />
           </div>
           <div className="no-drag flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700" title="账号切换仅用于本地演示，不是真实的身份认证">
             <ShieldAlert className="h-3.5 w-3.5" />

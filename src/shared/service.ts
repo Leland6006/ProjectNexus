@@ -82,15 +82,26 @@ function sanitizeClauses(clauses: Clause[]): Clause[] {
   }))
 }
 
+/**
+ * Mutable actor state shared with the session. An external counsel may be granted
+ * access by both parties; this records which one they are currently acting for so every
+ * permission check resolves the same way.
+ */
+export interface ActorContext {
+  representingOrgId: string | null
+}
+
 export class NexusService {
   readonly db: Database
   private readonly onChange: () => void
   private readonly clock: Clock
+  private readonly actor: ActorContext
 
-  constructor(db: Database, onChange: () => void = () => {}, clock: Clock = systemClock) {
+  constructor(db: Database, onChange: () => void = () => {}, clock: Clock = systemClock, actor: ActorContext = { representingOrgId: null }) {
     this.db = db
     this.onChange = onChange
     this.clock = clock
+    this.actor = actor
   }
 
   // ---------- lookup helpers ----------
@@ -104,15 +115,19 @@ export class NexusService {
   /** Transactions the actor cannot see are reported as missing, never as forbidden. */
   private tx(actor: User, id: string): { tx: Transaction; orgId: string } {
     const tx = this.db.transactions.find((t) => t.id === id)
-    if (!tx || !canViewTransaction(actor, tx)) throw new NexusError('NOT_FOUND', '交易项目不存在或无权访问')
-    return { tx, orgId: effectiveOrgId(actor, tx)! }
+    if (!tx || !canViewTransaction(actor, tx, this.actor.representingOrgId)) {
+      throw new NexusError('NOT_FOUND', '交易项目不存在或无权访问')
+    }
+    return { tx, orgId: effectiveOrgId(actor, tx, this.actor.representingOrgId)! }
   }
 
   private contract(actor: User, id: string): { contract: Contract; tx: Transaction; orgId: string } {
     const contract = this.db.contracts.find((c) => c.id === id)
     if (!contract) throw new NexusError('NOT_FOUND', '合同不存在或无权访问')
     const found = this.tx(actor, contract.transactionId)
-    if (!canViewContract(actor, found.tx, contract)) throw new NexusError('NOT_FOUND', '合同不存在或无权访问')
+    if (!canViewContract(actor, found.tx, contract, this.actor.representingOrgId)) {
+      throw new NexusError('NOT_FOUND', '合同不存在或无权访问')
+    }
     return { contract, tx: found.tx, orgId: found.orgId }
   }
 
@@ -593,7 +608,7 @@ export class NexusService {
       createdAt: this.clock.now()
     }
     this.db.milestones.push(m)
-    this.log(actor, effectiveOrgId(actor, tx)!, tx.id, null, 'milestone_created', `${actor.name} 创建了履约节点「${m.name}」`, 'shared')
+    this.log(actor, effectiveOrgId(actor, tx, this.actor.representingOrgId)!, tx.id, null, 'milestone_created', `${actor.name} 创建了履约节点「${m.name}」`, 'shared')
     this.commit()
     return m
   }

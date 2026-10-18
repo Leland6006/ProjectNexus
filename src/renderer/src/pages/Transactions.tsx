@@ -4,7 +4,7 @@ import { TRANSACTION_STATUS_LABEL, type TransactionStatus } from '@shared/types'
 import { Button, Card, Dialog, EmptyState, Field, Input, PageHeader, Select, Textarea } from '@/components/ui'
 import { TransactionStatusBadge } from '@/components/badges'
 import { formatMoney } from '@/lib/utils'
-import { accessFor, currentUser, orgOf } from '@/lib/selectors'
+import { accessFor, currentUser, directory, orgOf } from '@/lib/selectors'
 import { useApp, useView } from '@/store'
 
 const TYPES = ['设备采购', '技术服务', '保密协议', '销售合作', '其他']
@@ -15,7 +15,7 @@ function NewTransactionDialog({ open, onClose }: { open: boolean; onClose: () =>
   const busy = useApp((x) => x.busy)
   const navigate = useApp((x) => x.navigate)
   const me = currentUser(s)
-  const counterparties = s.organizations.filter((o) => o.kind === 'company' && o.id !== me.orgId)
+  const counterparties = directory(s).organizations.filter((o) => o.kind === 'company' && o.id !== me.orgId)
   const [form, setForm] = useState({ name: '', type: TYPES[0], counterpartyOrgId: counterparties[0]?.id ?? '', amount: '', expectedSignDate: '', description: '' })
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }))
 

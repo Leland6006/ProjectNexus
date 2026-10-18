@@ -5,7 +5,7 @@ import { TEMPLATES } from '@shared/templates'
 import { Badge, Button, Card, CardHeader, Dialog, EmptyState, Field, Input, Select, Textarea } from '@/components/ui'
 import { ContractStatusBadge, TransactionStatusBadge, VisibilityBadge } from '@/components/badges'
 import { formatDateTime, formatMoney } from '@/lib/utils'
-import { accessFor, orgOf, userLabel } from '@/lib/selectors'
+import { accessFor, directory, orgOf, userLabel } from '@/lib/selectors'
 import { useApp, useView } from '@/store'
 
 function EditDialog({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
@@ -127,7 +127,7 @@ export default function TransactionDetail({ transactionId }: { transactionId: st
   const contracts = s.contracts.filter((c) => c.transactionId === tx.id)
   const messages = s.messages.filter((m) => m.transactionId === tx.id).sort((x, y) => x.createdAt.localeCompare(y.createdAt))
   const activities = s.activities.filter((x) => x.transactionId === tx.id).sort((x, y) => y.createdAt.localeCompare(x.createdAt)).slice(0, 12)
-  const counselUsers = s.users.filter((u) => u.role === 'external_counsel')
+  const counselUsers = directory(s).users.filter((u) => u.role === 'external_counsel')
   const grantable = counselUsers.filter((u) => !tx.counselGrants.some((g) => g.userId === u.id))
   const myCounsel = tx.counselGrants.filter((g) => g.grantedByOrgId === a.orgId)
   const invitePending = a.isOwner && tx.counterpartyStatus === 'none'

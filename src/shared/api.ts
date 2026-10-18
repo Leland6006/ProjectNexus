@@ -5,6 +5,7 @@ import type { ViewState } from './types.ts'
 export const API_METHODS = [
   'getState',
   'switchUser',
+  'setRepresentingOrg',
   'resetDemo',
   'createTransaction',
   'updateTransaction',

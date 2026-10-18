@@ -21,21 +21,32 @@ npm run dev
 ## 测试与构建
 
 ```bash
-npm test            # 单元测试（权限、业务流程、版本比较、存储）
+npm test            # 单元测试（权限、业务流程、版本比较、存储迁移、HTML 清理、编辑器规则）
 npm run typecheck   # TypeScript 类型检查
 npm run build       # 类型检查 + 生产构建
 npm run dist        # 打包 macOS DMG
 ```
 
-## 打包说明
+推送到 `main` 或发起 PR 时，GitHub Actions（`.github/workflows/ci.yml`）会自动执行 typecheck、测试与构建。
 
-`npm run dist` 生成**未签名**的 DMG。未签名的应用在其他 Mac 上首次打开会被 Gatekeeper 提示，需要在“系统设置 → 隐私与安全性”中手动允许。
-正式分发需要 Apple Developer 账号进行签名与公证（见 ROADMAP V0.3）。
+## 打包与签名
+
+`npm run dist` 默认生成**未签名**的 DMG。未签名的应用在其他 Mac 上首次打开会被 Gatekeeper 提示，需要在“系统设置 → 隐私与安全性”中手动允许。
+
+正式分发需要 Apple Developer 账号。在 `electron-builder.yml` 中启用 `identity` 与 `notarize`，并在打包前导出：
+
+```bash
+export APPLE_ID="you@example.com"
+export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"   # 在 appleid.apple.com 生成的应用专用密码
+export APPLE_TEAM_ID="TEAMID"
+```
+
+然后把 `mac.identity` 改成你的 `Developer ID Application: …` 证书名称。CI 中建议把这些值放进仓库 Secrets，不要写进配置文件。
 
 ## 目录
 
 ```
-src/shared/    业务逻辑、权限、版本比较、模板、演示数据（纯 TypeScript，可独立测试）
+src/shared/    业务逻辑、权限、版本比较、存储迁移、HTML 清理、编辑器规则、模板、演示数据（纯 TypeScript，可独立测试）
 src/main/      Electron 主进程、IPC、本地存储
 src/preload/   安全桥接
 src/renderer/  React 界面
@@ -50,7 +61,7 @@ AI 助手入口（模拟）· 重启后数据保留。
 
 ## 已知限制
 
-- 仅本地单机；账号切换不是真实认证；数据文件为明文 JSON。
+- 仅本地单机；账号切换不是真实认证；数据文件为明文 JSON（本地磁盘，未加密）。
 - 不支持 DOCX 导入导出（仅富文本编辑）；无电子签章、无实时多人编辑。
 - “AI 助手”是本地规则生成的**模拟AI输出**，未接入任何模型，不构成法律意见。
 - 合同编辑器为按条款编辑的富文本，不是 Word 级别的修订追踪。
