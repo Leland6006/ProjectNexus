@@ -4,7 +4,9 @@ import assert from 'node:assert/strict'
 import { buildAgentContext, confirmClaim, mergeClaim, selectPremises, visibleClaims } from '../src/shared/context.ts'
 import { detectPaymentTermsChange, diffPaymentTerms, latestVersionPair } from '../src/shared/events.ts'
 import { forecastCashflow, paymentSchedule } from '../src/shared/finance.ts'
-import { approveProposal, NO_LLM, rejectProposal, routeAgents, runOrchestrator } from '../src/shared/orchestrator.ts'
+import { approveProposal, NO_LLM, rejectProposal, routeAgents, runOrchestrator, isDuplicateProposal } from '../src/shared/orchestrator.ts'
+import { buildViewState } from '../src/shared/permissions.ts'
+import { claimsForProposal } from '../src/shared/proposalView.ts'
 import { createSeedDatabase, DEFAULT_USER_ID, ORG_A, ORG_B } from '../src/shared/seed.ts'
 import { NexusError, type Claim, type ContractVersion, type Database, type PaymentTerms } from '../src/shared/types.ts'
 
@@ -351,6 +353,57 @@ test('approval promotes claims, writes a trail, and refuses a stale draft', asyn
 
   const rejected = rejectProposal({ db, proposalId: proposal.id, userId: DEFAULT_USER_ID, at: '2026-10-18T12:00:00.000Z' })
   assert.equal(rejected.status, 'rejected')
+})
+
+test('re-running the graph on unchanged terms does not pile up identical drafts', async () => {
+  const db = scenario()
+  db.proposals.length = 0 // start from an empty review queue; the demo ships one
+  const run = (): Promise<Awaited<ReturnType<typeof runOrchestrator>>> =>
+    runOrchestrator({
+      db,
+      userId: DEFAULT_USER_ID,
+      transactionId: TX,
+      llm: NO_LLM,
+      now: '2026-10-18T10:00:00.000Z',
+      makeId: (p) => `${p}_${Math.random().toString(36).slice(2, 8)}`
+    })
+  const first = await run()
+  assert.equal(isDuplicateProposal(db, first.proposal!), false)
+  db.proposals.push(first.proposal!)
+
+  // Same transaction, still undecided: a second run is a refresh, not a second card.
+  const second = await run()
+  assert.equal(isDuplicateProposal(db, second.proposal!), true)
+
+  // Decided drafts do not block a new one after the situation changed.
+  db.proposals.find((p) => p.id === first.proposal!.id)!.status = 'rejected'
+  assert.equal(isDuplicateProposal(db, second.proposal!), false)
+})
+
+test('"no model configured" is a build fact, not advice shown to the user', async () => {
+  const db = scenario()
+  const result = await runOrchestrator({
+    db,
+    userId: DEFAULT_USER_ID,
+    transactionId: TX,
+    llm: null,
+    now: '2026-10-18T10:00:00.000Z'
+  })
+  assert.ok(result.proposal, 'the deterministic finance step alone should still produce advice')
+  assert.ok(!result.proposal!.rationale.includes('未接入模型'))
+  assert.ok(result.briefs.some((b) => b.findings.includes('未接入模型，跳过该专业视角。')))
+})
+
+test('the shipped demo contains a worked example in the review queue', () => {
+  const db = createSeedDatabase()
+  const view = buildViewState(db, DEFAULT_USER_ID)
+  const pending = view.proposals.filter((p) => p.status === 'pending')
+  assert.equal(pending.length, 1)
+  // Every piece of evidence it cites must be visible to the person asked to approve it.
+  const { missing } = claimsForProposal(view.claims, pending[0])
+  assert.deepEqual(missing, [])
+  assert.ok(view.claims.some((c) => c.status === 'confirmed'))
+  assert.ok(view.claims.some((c) => c.status === 'inferred'))
 })
 
 test('a user without access to the transaction cannot run the graph', async () => {

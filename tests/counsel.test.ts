@@ -79,7 +79,7 @@ test('a counsel granted by both parties only sees the side they are acting for',
   assert.ok(!forB.comments.some((c) => c.id === 'cm_a_counsel'), 'A-side opinion leaked to the B-side view')
 })
 
-test('switching the represented side goes through the IPC allowlist', () => {
+test('switching the represented side goes through the IPC allowlist', async () => {
   const dir = tmp()
   try {
     const loaded = new JsonStore(dir).load()
@@ -88,14 +88,14 @@ test('switching the represented side goes through the IPC allowlist', () => {
     tx.counselGrants.push({ userId: 'u_a_counsel', grantedByOrgId: ORG_B, grantedByUserId: 'u_b_legal', grantedAt: NOW })
     const session = createSession(db, 'u_a_counsel', () => {})
 
-    const denied = handleCall(session, 'setRepresentingOrg', [ORG_LAW])
+    const denied = await handleCall(session, 'setRepresentingOrg', [ORG_LAW])
     assert.equal(denied.ok, false, 'counsel must not claim a firm that never granted access')
 
-    const ok = handleCall(session, 'setRepresentingOrg', [ORG_B])
+    const ok = await handleCall(session, 'setRepresentingOrg', [ORG_B])
     assert.equal(ok.ok, true)
     if (ok.ok) assert.equal(ok.state.representingOrgId, ORG_B)
 
-    const cleared = handleCall(session, 'setRepresentingOrg', [null])
+    const cleared = await handleCall(session, 'setRepresentingOrg', [null])
     assert.equal(cleared.ok, true)
     if (cleared.ok) assert.equal(cleared.state.representingOrgId, null)
   } finally {
@@ -103,12 +103,12 @@ test('switching the represented side goes through the IPC allowlist', () => {
   }
 })
 
-test('only external counsel may pick a represented organisation', () => {
+test('only external counsel may pick a represented organisation', async () => {
   const dir = tmp()
   try {
     const loaded = new JsonStore(dir).load()
     const session = createSession(loaded.db, 'u_a_biz', () => {})
-    const r = handleCall(session, 'setRepresentingOrg', [ORG_B])
+    const r = await handleCall(session, 'setRepresentingOrg', [ORG_B])
     assert.equal(r.ok, false)
     if (!r.ok) assert.equal(r.code, 'PERMISSION_DENIED')
   } finally {
@@ -116,7 +116,7 @@ test('only external counsel may pick a represented organisation', () => {
   }
 })
 
-test('switching account clears the delegated authority', () => {
+test('switching account clears the delegated authority', async () => {
   const dir = tmp()
   try {
     const loaded = new JsonStore(dir).load()
@@ -128,9 +128,9 @@ test('switching account clears the delegated authority', () => {
       grantedAt: NOW
     })
     const session = createSession(db, 'u_a_counsel', () => {})
-    assert.equal(handleCall(session, 'setRepresentingOrg', [ORG_B]).ok, true)
-    assert.equal(handleCall(session, 'switchUser', ['u_a_biz']).ok, true)
-    const after = handleCall(session, 'getState', [])
+    assert.equal((await handleCall(session, 'setRepresentingOrg', [ORG_B])).ok, true)
+    assert.equal((await handleCall(session, 'switchUser', ['u_a_biz'])).ok, true)
+    const after = await handleCall(session, 'getState', [])
     if (after.ok) assert.equal(after.state.representingOrgId, null)
   } finally {
     rmSync(dir, { recursive: true, force: true })

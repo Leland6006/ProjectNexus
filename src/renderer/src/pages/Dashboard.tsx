@@ -1,5 +1,6 @@
-import { AlertCircle, CalendarClock, FileClock, Handshake, MessageSquareReply } from 'lucide-react'
-import { Badge, Card, CardHeader, EmptyState, PageHeader } from '@/components/ui'
+import { AlertCircle, CalendarClock, FileClock, Handshake, MessageSquareReply, Sparkles } from 'lucide-react'
+import { sortForReview } from '@shared/proposalView'
+import { Badge, Button, Card, CardHeader, EmptyState, PageHeader } from '@/components/ui'
 import { ContractStatusBadge, MilestoneStatusBadge, TransactionStatusBadge } from '@/components/badges'
 import { daysUntil, formatDateTime, formatMoney, cn } from '@/lib/utils'
 import { accessFor, currentUser, orgOf } from '@/lib/selectors'
@@ -48,6 +49,7 @@ export default function Dashboard() {
     .slice(0, 5)
 
   const activities = [...s.activities].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 8)
+  const agentProposals = sortForReview(s.proposals).filter((p) => p.status === 'pending')
 
   return (
     <div className="mx-auto max-w-6xl p-6">
@@ -165,7 +167,41 @@ export default function Dashboard() {
           )}
         </Card>
 
-        <Card className="col-span-5">
+        <Card className="col-span-2">
+          <CardHeader
+            title="待确认的 AI 建议"
+            subtitle="Agent 之间共享同一份企业上下文"
+            action={
+              <Button size="sm" onClick={() => navigate({ page: 'proposals' })}>
+                全部
+              </Button>
+            }
+          />
+          {agentProposals.length === 0 ? (
+            <EmptyState icon={<Sparkles className="h-8 w-8" />} title="暂无待确认建议" hint="商业条款变化时会在这里生成建议" />
+          ) : (
+            <ul>
+              {agentProposals.slice(0, 4).map((p) => {
+                const tx = s.transactions.find((t) => t.id === p.transactionId)
+                return (
+                  <li key={p.id} onClick={() => navigate({ page: 'proposals' })} className="cursor-pointer border-t border-slate-100 px-4 py-2.5 first:border-t-0 hover:bg-slate-50">
+                    <div className="flex items-start gap-2">
+                      <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-600" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{p.title}</p>
+                        <p className="mt-0.5 truncate text-xs text-ink-500">
+                          {tx?.name} · {formatDateTime(p.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </Card>
+
+        <Card className="col-span-3">
           <CardHeader title="近期活动" />
           {activities.length === 0 ? (
             <EmptyState title="暂无活动" />

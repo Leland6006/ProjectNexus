@@ -3,6 +3,7 @@ import { Shell } from './components/Shell'
 import { Spinner, Toasts, Button } from './components/ui'
 import { useApp } from './store'
 import Dashboard from './pages/Dashboard'
+import Proposals from './pages/Proposals'
 import Transactions from './pages/Transactions'
 import TransactionDetail from './pages/TransactionDetail'
 import ContractsPage from './pages/Contracts'
@@ -39,6 +40,8 @@ function Router() {
   switch (route.page) {
     case 'dashboard':
       return <Dashboard />
+    case 'proposals':
+      return <Proposals />
     case 'transactions':
       return route.transactionId ? <TransactionDetail transactionId={route.transactionId} /> : <Transactions />
     case 'contracts':

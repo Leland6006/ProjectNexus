@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { ArrowLeft, FilePlus2, Pencil, Scale, Send, UserPlus } from 'lucide-react'
+import { ArrowLeft, FilePlus2, Pencil, Scale, Send, Sparkles, UserPlus } from 'lucide-react'
 import { TRANSACTION_STATUS_LABEL, type Transaction, type TransactionStatus } from '@shared/types'
 import { TEMPLATES } from '@shared/templates'
 import { Badge, Button, Card, CardHeader, Dialog, EmptyState, Field, Input, Select, Textarea } from '@/components/ui'
 import { ContractStatusBadge, TransactionStatusBadge, VisibilityBadge } from '@/components/badges'
 import { formatDateTime, formatMoney } from '@/lib/utils'
+import { runAgentAnalysis } from '@/lib/agents'
 import { accessFor, directory, orgOf, userLabel } from '@/lib/selectors'
 import { useApp, useView } from '@/store'
 
@@ -138,6 +139,8 @@ export default function TransactionDetail({ transactionId }: { transactionId: st
     if (await act('sendMessage', [tx.id, msg, msgVis])) setMsg('')
   }
 
+  const txProposals = s.proposals.filter((p) => p.transactionId === tx.id)
+
   return (
     <div className="mx-auto max-w-6xl p-6">
       <button onClick={() => navigate({ page: 'transactions' })} className="mb-3 inline-flex items-center gap-1 text-xs text-ink-500 hover:text-ink-900">
@@ -158,6 +161,12 @@ export default function TransactionDetail({ transactionId }: { transactionId: st
             <Button onClick={() => setEditing(true)}>
               <Pencil className="h-3.5 w-3.5" />
               编辑
+            </Button>
+          )}
+          {a.isParty && (
+            <Button loading={busy} onClick={() => void runAgentAnalysis(tx.id)}>
+              <Sparkles className="h-3.5 w-3.5" />
+              让 AI 团队分析
             </Button>
           )}
           {invitePending && (
@@ -290,6 +299,35 @@ export default function TransactionDetail({ transactionId }: { transactionId: st
                 </div>
               )}
             </div>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="AI 建议"
+              subtitle="Agent 生成的建议在人工确认前不会生效"
+              action={
+                <Button size="sm" onClick={() => navigate({ page: 'proposals' })}>
+                  建议中心
+                </Button>
+              }
+            />
+            {txProposals.length === 0 ? (
+              <p className="px-4 py-3 text-xs text-ink-500">还没有针对这笔交易的建议。</p>
+            ) : (
+              <ul>
+                {txProposals.map((p) => (
+                  <li key={p.id} onClick={() => navigate({ page: 'proposals' })} className="cursor-pointer border-t border-slate-100 px-4 py-2.5 first:border-t-0 hover:bg-slate-50">
+                    <div className="flex items-center gap-2">
+                      <Badge tone={p.status === 'pending' ? 'amber' : p.status === 'approved' ? 'green' : 'gray'}>
+                        {p.status === 'pending' ? '待确认' : p.status === 'approved' ? '已采纳' : '已忽略'}
+                      </Badge>
+                      <span className="truncate text-sm font-medium">{p.title}</span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-ink-400">{formatDateTime(p.createdAt)}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
 
           <Card>

@@ -141,8 +141,15 @@ const transactions: Transaction[] = [
   }
 ]
 
-/** Structured mirror of ct_equip's payment clause. See types.ts for why this exists. */
+/**
+ * Structured mirror of ct_equip's payment clause. See types.ts for why this exists.
+ *
+ * The demo hinges on these two: the counterparty pushed the prepayment from 50% down
+ * to 10% in v3, which is what the agent graph reacts to. Without the numbers being
+ * fields rather than prose, no amount of model calling can compute the cash gap.
+ */
 const EQUIP_TERMS: PaymentTerms = { prepayRate: 0.5, instalments: [], settlementDays: 15 }
+const EQUIP_TERMS_REVISED: PaymentTerms = { prepayRate: 0.1, instalments: [], settlementDays: 15 }
 
 const contracts: Contract[] = [
   {
@@ -151,7 +158,8 @@ const contracts: Contract[] = [
     title: '智能巡检机器人采购合同',
     status: 'negotiating',
     clauses: V3_CLAUSES,
-    paymentTerms: { prepayRate: 0.5, instalments: [], settlementDays: 15 },
+    // Mirrors v3: the counterparty's 10% prepayment demand, not our opening 50%.
+    paymentTerms: EQUIP_TERMS_REVISED,
     sharedWithCounterparty: true,
     sharedAt: ts('10-08'),
     finalVersionId: null,
@@ -207,11 +215,11 @@ const versions: ContractVersion[] = [
     'ct_equip',
     3,
     '第二轮协商稿',
-    '接受远航关于交付周期的修改建议',
+    '接受远航关于交付周期的修改建议；对方要求预付款由 50% 降至 10%',
     V3_CLAUSES,
     'u_a_biz',
     ts('10-14', '16:00'),
-    EQUIP_TERMS
+    EQUIP_TERMS_REVISED
   ),
   ver('ver_s1', 'ct_service', 1, '初稿', '空白合同起草', contracts[1].clauses, 'u_a_biz', ts('10-14', '14:30')),
   ver('ver_nda1', 'ct_nda', 1, '签署版', '双方确认的最终版本', contracts[2].clauses, 'u_b_biz', ts('10-09', '15:00'))
@@ -383,9 +391,110 @@ const cashAccounts: CashAccount[] = [
   { id: 'cash_a', orgId: ORG_A, label: '基本存款账户', openingBalance: 150_000, asOf: '2026-10-18' }
 ]
 
-// Company memory starts empty: claims are created by agents and promoted by people.
-const claims: Claim[] = []
-const proposals: Proposal[] = []
+// Company memory is normally empty at install: claims are written by agents and promoted
+// by people. The demo ships the one worked example the product exists for — the
+// counterparty cut the prepayment from 50% to 10% in v3 — so the centre is not blank on
+// first launch and the whole chain (fact / inference / recommendation) can be inspected.
+const claims: Claim[] = [
+  {
+    id: 'cl_demo_prepay',
+    orgId: ORG_A,
+    transactionId: 'tx_equip',
+    key: 'payment.prepay_amount',
+    label: '预付款金额',
+    value: '¥128,000',
+    numeric: 128_000,
+    unit: 'CNY',
+    status: 'confirmed',
+    source: { kind: 'contract', ref: 'ct_equip', detail: '按合同金额 ¥1,280,000 与预付款比例 10% 计算' },
+    asOf: ts('10-14', '16:00'),
+    visibility: 'internal',
+    supersededById: null,
+    confirmedBy: null,
+    confirmedAt: null
+  },
+  {
+    id: 'cl_demo_gap',
+    orgId: ORG_A,
+    transactionId: 'tx_equip',
+    key: 'cash.gap',
+    label: '预计资金缺口',
+    value: '¥342,000',
+    numeric: 342_000,
+    unit: 'CNY',
+    status: 'inferred',
+    source: { kind: 'agent', ref: 'finance', detail: '按传感器备货款 11-10 到期、可动用现金 ¥150,000 测算' },
+    asOf: ts('10-16', '09:40'),
+    visibility: 'internal',
+    supersededById: null,
+    confirmedBy: null,
+    confirmedAt: null
+  },
+  {
+    id: 'cl_demo_legal',
+    orgId: ORG_A,
+    transactionId: 'tx_equip',
+    key: 'risk.legal.0',
+    label: '法务风险提示',
+    value: '预付款降至 10% 后，我方先履行义务而缺少付款保障，建议补充验收期限与逾期付款违约责任。',
+    numeric: null,
+    unit: null,
+    status: 'inferred',
+    source: { kind: 'agent', ref: 'legal' },
+    asOf: ts('10-16', '09:40'),
+    visibility: 'internal',
+    supersededById: null,
+    confirmedBy: null,
+    confirmedAt: null
+  },
+  {
+    id: 'cl_demo_ops',
+    orgId: ORG_A,
+    transactionId: 'tx_equip',
+    key: 'ops.plan.0',
+    label: '经营应对建议',
+    value: '将备货启动时间推迟至预付款到账后，或改为按交付批次分阶段收款。',
+    numeric: null,
+    unit: null,
+    status: 'recommended',
+    source: { kind: 'agent', ref: 'ops' },
+    asOf: ts('10-16', '09:40'),
+    visibility: 'internal',
+    supersededById: null,
+    confirmedBy: null,
+    confirmedAt: null
+  }
+]
+
+const proposals: Proposal[] = [
+  {
+    id: 'pp_demo_prepay',
+    transactionId: 'tx_equip',
+    contractId: 'ct_equip',
+    orgId: ORG_A,
+    title: '预付款由 50% 降至 10%，11 月 10 日前存在 ¥342,000 资金缺口',
+    rationale: [
+      '预付款 ¥128,000，可动用现金 ¥150,000。',
+      '预计在 2026-11-10 出现资金缺口 ¥342,000（最低余额 ¥-342,000）。',
+      '本次变更使预付款减少 ¥512,000。',
+      '法务：预付款降至 10% 后缺少付款保障，建议补充验收期限与逾期违约责任。',
+      '经营：可将备货启动推迟至预付款到账后，或改为按交付批次分阶段收款。'
+    ].join('\n'),
+    actions: [
+      { kind: 'counter_offer', title: '向对方提出 40% 预付款的反报价', detail: '财务测算：40% 预付款（¥512,000）可覆盖 11-10 的备货支出，且不改变尾款账期。' },
+      { kind: 'revise_clause', title: '补充验收期限与逾期付款违约责任条款', detail: '法务：若对方坚持 10% 预付款，需以验收期限和违约金条款替代付款保障。' },
+      { kind: 'add_task', title: '将备货启动推迟至预付款到账后', detail: '经营：在预付款到账前不触发传感器备货，避免先垫付 ¥620,000。' }
+    ],
+    claimIds: ['cl_demo_prepay', 'cl_demo_gap', 'cl_demo_legal', 'cl_demo_ops'],
+    eventId: null,
+    status: 'pending',
+    createdBy: 'agent:main',
+    createdAt: ts('10-16', '09:40'),
+    resolvedBy: null,
+    resolvedAt: null,
+    baseVersionId: 'ver_e3'
+  }
+]
 
 export function createSeedDatabase(): Database {
   // Deep copy so callers can mutate freely without touching module-level constants.

@@ -1,12 +1,14 @@
 import { useState, type ReactNode } from 'react'
-import { Building2, ChevronDown, FileText, Handshake, LayoutDashboard, MessagesSquare, Settings as SettingsIcon, ShieldAlert, Workflow } from 'lucide-react'
+import { Building2, ChevronDown, FileText, Handshake, LayoutDashboard, MessagesSquare, Settings as SettingsIcon, ShieldAlert, Sparkles, Workflow } from 'lucide-react'
 import { ROLE_LABEL } from '@shared/types'
+import { pendingCount } from '@shared/proposalView'
 import { cn } from '@/lib/utils'
 import { counselGrantOrgIds, currentUser, directory, orgOf } from '@/lib/selectors'
 import { useApp, useView, type Page } from '@/store'
 
 const NAV: { page: Page; label: string; icon: typeof LayoutDashboard }[] = [
   { page: 'dashboard', label: '工作台', icon: LayoutDashboard },
+  { page: 'proposals', label: 'AI 建议', icon: Sparkles },
   { page: 'transactions', label: '交易项目', icon: Handshake },
   { page: 'contracts', label: '合同中心', icon: FileText },
   { page: 'collaboration', label: '协作与消息', icon: MessagesSquare },
@@ -119,6 +121,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const me = currentUser(s)
   const myOrg = orgOf(s, me.orgId)
   const active: Page = route.page
+  const waiting = pendingCount(s.proposals)
 
   return (
     <div className="flex h-full">
@@ -143,6 +146,9 @@ export function Shell({ children }: { children: ReactNode }) {
             >
               <Icon className="h-4 w-4" />
               {label}
+              {page === 'proposals' && waiting > 0 && (
+                <span className="ml-auto rounded-full bg-amber-100 px-1.5 text-xs font-semibold text-amber-800">{waiting}</span>
+              )}
             </button>
           ))}
         </nav>

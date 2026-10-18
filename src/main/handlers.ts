@@ -2,9 +2,9 @@
 // main process, so the renderer can never claim to be someone else on a per-call basis.
 // (Still a DEMO: switching accounts is unauthenticated by design.)
 
-import { mergeClaim } from '../shared/context.ts'
-import { buildViewState } from '../shared/permissions.ts'
-import { NO_LLM, runOrchestrator, approveProposal, rejectProposal, type LlmClient } from '../shared/orchestrator.ts'
+import { confirmClaim, mergeClaim } from '../shared/context.ts'
+import { buildViewState, canSeeItem, canViewTransaction, effectiveOrgId } from '../shared/permissions.ts'
+import { NO_LLM, runOrchestrator, approveProposal, rejectProposal, isDuplicateProposal, type LlmClient } from '../shared/orchestrator.ts'
 import { createSeedDatabase, DEFAULT_USER_ID } from '../shared/seed.ts'
 import { NexusService, type ActorContext } from '../shared/service.ts'
 import type { ApiMethod, ApiResult } from '../shared/api.ts'
@@ -56,7 +56,17 @@ export async function runAgentsFor(session: Session, transactionId: string): Pro
       representingOrgId: session.actor.representingOrgId
     })
     for (const c of result.claims) mergeClaim(db.claims, c)
-    if (result.proposal) db.proposals.push(result.proposal)
+    if (result.proposal) {
+      if (isDuplicateProposal(db, result.proposal)) {
+        // Refresh the draft already waiting: newest numbers, re-based on the current version.
+        const existing = db.proposals.find(
+          (p) => p.transactionId === result.proposal!.transactionId && p.orgId === result.proposal!.orgId && p.status === 'pending'
+        )!
+        Object.assign(existing, { ...result.proposal, id: existing.id, createdAt: existing.createdAt })
+      } else {
+        db.proposals.push(result.proposal)
+      }
+    }
   } catch (err) {
     console.error('[agents] orchestration failed', err)
   }
@@ -73,7 +83,7 @@ function obj<T>(v: unknown): T {
   return v as T
 }
 
-export function handleCall(session: Session, method: unknown, args: unknown[]): ApiResult {
+export async function handleCall(session: Session, method: unknown, args: unknown[]): Promise<ApiResult> {
   try {
     if (typeof method !== 'string' || !(API_METHODS as readonly string[]).includes(method)) {
       throw new NexusError('INVALID_INPUT', '未知操作')
@@ -145,8 +155,14 @@ export function handleCall(session: Session, method: unknown, args: unknown[]): 
       case 'updatePaymentTerms': {
         const raw = args[1] === null || args[1] === undefined ? null : obj<PaymentTerms>(args[1])
         const contract = s.updatePaymentTerms(me, str(args[0]), raw)
-        // Event-driven: a commercial change is analysed without being asked.
-        void runAgentsFor(session, contract.transactionId)
+        // Event-driven: a commercial change is analysed without being asked. Awaited so
+        // the resulting draft is in the view state returned with this same call.
+        await runAgentsFor(session, contract.transactionId)
+        break
+      }
+      case 'runAgents': {
+        // Manual re-run: the same graph, on demand, rather than only on a detected change.
+        await runAgentsFor(session, str(args[0]))
         break
       }
       case 'approveProposal':
@@ -155,6 +171,26 @@ export function handleCall(session: Session, method: unknown, args: unknown[]): 
       case 'rejectProposal':
         rejectProposal({ db: s.db, proposalId: str(args[0]), userId: me, at: new Date().toISOString() })
         break
+      case 'confirmClaim': {
+        // The one place an inference becomes company memory. Gated on the claim already
+        // being visible to this user, so confirming cannot widen what they may read.
+        const claim = s.db.claims.find((c) => c.id === str(args[0]))
+        if (!claim) throw new NexusError('NOT_FOUND', '信息不存在')
+        const user = s.db.users.find((u) => u.id === me)
+        if (!user) throw new NexusError('NOT_FOUND', '账号不存在')
+        const asOrgId = session.actor.representingOrgId
+        if (claim.transactionId) {
+          const tx = s.db.transactions.find((t) => t.id === claim.transactionId)
+          if (!tx || !canViewTransaction(user, tx, asOrgId)) throw new NexusError('NOT_FOUND', '信息不存在')
+          if (effectiveOrgId(user, tx, asOrgId) !== claim.orgId) throw new NexusError('PERMISSION_DENIED', '无权确认该信息')
+          if (!canSeeItem(user, tx, claim, asOrgId)) throw new NexusError('PERMISSION_DENIED', '无权确认该信息')
+        } else if (claim.orgId !== user.orgId) {
+          throw new NexusError('PERMISSION_DENIED', '无权确认该信息')
+        }
+        Object.assign(claim, confirmClaim(claim, me, new Date().toISOString()))
+        s.notifyChanged()
+        break
+      }
       case 'saveVersion':
         s.saveVersion(me, str(args[0]), str(args[1]), args[2] === undefined ? '' : str(args[2]))
         break

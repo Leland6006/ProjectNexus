@@ -73,6 +73,8 @@ Organization、User、Transaction、Contract、ContractVersion、Comment、Sugge
 | `src/shared/finance.ts` | 现金流测算。**纯计算，不调用模型** |
 | `src/shared/context.ts` | Claim（企业记忆单元）、Agent 上下文分发、事实晋升规则 |
 | `src/shared/orchestrator.ts` | 确定性 DAG + 三个标注的模型节点 + 人工确认闭环 |
+| `src/shared/proposalView.ts` | 建议中心的展示规则（陈旧判定、证据排序、状态文案） |
+| `src/renderer/src/pages/Proposals.tsx` | 待确认建议中心与企业记忆面板 |
 
 两条硬性规则：
 
@@ -80,6 +82,16 @@ Organization、User、Transaction、Contract、ContractVersion、Comment、Sugge
 2. **事实、假设、建议分开存。** `Claim.status` 为 `confirmed | inferred | recommended`。只有人类确认能把 `inferred` 晋升为 `confirmed`；`inferred` 永不覆盖已确认事实（`mergeClaim`）；Agent 推理只能用 `confirmed` 作为前提（`selectPremises`）。这是阻止多个模型互相引用彼此猜测的唯一可靠闸门。
 
 模型只用在需要判断的地方（法务与经营解读）和最终汇总；路由、算术、权限过滤都是普通代码。Agent 的产出一律是 `pending` 的 `Proposal`，带 `baseVersionId`，合同一旦被改动就拒绝批准（乐观并发）。
+
+### 人工确认闭环
+
+界面上的「AI 建议中心」是这条闭环的落点，规则同样写在 `src/shared` 里，因此可测：
+
+- 每条建议列出它引用的 Claim，并按 `confirmed → inferred → recommended` 排序展示，状态徽章不同。
+- 单条推断可以单独点「确认」晋升为事实（`confirmClaim` IPC），前提是它本来就在该用户的可见范围内——确认操作不能扩大可读范围。
+- 建议「采纳」时，把它引用的推断一并晋升为已确认事实，并写入活动记录；「忽略」只标记状态。
+- 陈旧建议（`isStaleProposal`）显示为失效并禁用采纳按钮，必须先重新分析。
+- 重复运行同一份条款不会产生第二条相同建议（`isDuplicateProposal`），只更新已有结论。
 
 ## 未来云端架构
 

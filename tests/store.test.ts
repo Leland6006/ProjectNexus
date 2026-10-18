@@ -10,7 +10,7 @@ function tmp(): string {
   return mkdtempSync(join(tmpdir(), 'nexus-test-'))
 }
 
-test('data survives a restart (save -> new store -> load)', () => {
+test('data survives a restart (save -> new store -> load)', async () => {
   const dir = tmp()
   try {
     const store1 = new JsonStore(dir)
@@ -18,8 +18,8 @@ test('data survives a restart (save -> new store -> load)', () => {
     const session = createSession(loaded.db, loaded.currentUserId, (s) =>
       store1.save({ db: s.service.db, currentUserId: s.currentUserId })
     )
-    assert.equal(handleCall(session, 'switchUser', ['u_b_biz']).ok, true)
-    const created = handleCall(session, 'createTransaction', [
+    assert.equal((await handleCall(session, 'switchUser', ['u_b_biz'])).ok, true)
+    const created = await handleCall(session, 'createTransaction', [
       { name: '重启测试交易', type: '采购', counterpartyOrgId: 'org_qiming', amount: 5, expectedSignDate: '2026-12-01', description: '' }
     ])
     // u_b_biz belongs to org_yuanhang so org_qiming is a valid counterparty
@@ -47,29 +47,29 @@ test('corrupt data file is preserved and replaced with fresh demo data', () => {
   }
 })
 
-test('handleCall rejects unknown methods and bad arguments without throwing', () => {
+test('handleCall rejects unknown methods and bad arguments without throwing', async () => {
   const dir = tmp()
   try {
     const store = new JsonStore(dir)
     const l = store.load()
     const session = createSession(l.db, l.currentUserId, () => {})
-    const unknown = handleCall(session, 'dropAllTables', [])
+    const unknown = await handleCall(session, 'dropAllTables', [])
     assert.equal(unknown.ok, false)
-    const bad = handleCall(session, 'createTransaction', ['not an object'])
+    const bad = await handleCall(session, 'createTransaction', ['not an object'])
     assert.equal(bad.ok, false)
-    const notMine = handleCall(session, 'switchUser', ['nobody'])
+    const notMine = await handleCall(session, 'switchUser', ['nobody'])
     assert.equal(notMine.ok, false)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 })
 
-test('state returned to the renderer is filtered for the acting user', () => {
+test('state returned to the renderer is filtered for the acting user', async () => {
   const dir = tmp()
   try {
     const l = new JsonStore(dir).load()
     const session = createSession(l.db, l.currentUserId, () => {})
-    const r = handleCall(session, 'switchUser', ['u_b_biz'])
+    const r = await handleCall(session, 'switchUser', ['u_b_biz'])
     assert.ok(r.ok)
     if (r.ok) assert.ok(!r.state.comments.some((c) => c.body.includes('是我方底线')))
   } finally {

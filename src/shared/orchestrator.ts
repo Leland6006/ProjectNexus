@@ -38,6 +38,9 @@ export interface LlmClient {
 /** Stand-in for tests and for the local demo that has no model wired up. */
 export const NO_LLM: LlmClient = { complete: async () => '' }
 
+/** Finding emitted when a judgement step is skipped because no model is configured. */
+const NO_MODEL = '未接入模型，跳过该专业视角。'
+
 export function routeAgents(event: DomainEvent | null): AgentId[] {
   if (!event) return []
   switch (event.type) {
@@ -215,7 +218,7 @@ async function runSpecialist(
   }
 
   if (!llm) {
-    return { agentId, findings: ['未接入模型，跳过该专业视角。'], recommendation: null, claims: [] }
+    return { agentId, findings: [NO_MODEL], recommendation: null, claims: [] }
   }
 
   const system =
@@ -300,10 +303,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestrationRe
   const { premises } = selectPremises(claims)
 
   let title = event?.summary ?? '需要关注的变化'
-  let rationale = briefs
-    .flatMap((b) => b.findings)
-    .slice(0, 6)
-    .join('\n')
+  // "No model configured" is a build fact, not a finding a user should act on.
+  const usableFindings = briefs.flatMap((b) => b.findings).filter((f) => f !== NO_MODEL)
+  let rationale = usableFindings.slice(0, 6).join('\n')
   let actions: ProposedAction[] = []
 
   if (llm) {
@@ -313,7 +315,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestrationRe
       system,
       user: `事件：${event?.summary ?? '（无）'}\n\n已确认事实：\n${
         premises.map((c) => `- ${c.label}: ${c.value}`).join('\n') || '- （无）'
-      }\n\n各专业视角：\n${briefs.flatMap((b) => b.findings).map((f) => `- ${f}`).join('\n')}`
+      }\n\n各专业视角：\n${usableFindings.map((f) => `- ${f}`).join('\n')}`
     })
     const lines = parseBullets(text)
     if (lines.length > 0) {
@@ -355,6 +357,22 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestrationRe
       : null
 
   return { event, briefs, claims, proposal }
+}
+
+/**
+ * A transaction has at most one draft waiting for a person. Re-running the graph is a
+ * refresh, not a new item: the review queue is a decision list, not an archive, and a
+ * second near-identical card is the fastest way to make people stop trusting it.
+ * Decided drafts are history and never block a new one.
+ */
+export function isDuplicateProposal(db: Database, proposal: Proposal): boolean {
+  return db.proposals.some(
+    (p) =>
+      p.id !== proposal.id &&
+      p.transactionId === proposal.transactionId &&
+      p.orgId === proposal.orgId &&
+      p.status === 'pending'
+  )
 }
 
 // --- Human confirmation ----------------------------------------------------------

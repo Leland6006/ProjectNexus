@@ -2,7 +2,15 @@ import { create } from 'zustand'
 import type { ApiMethod } from '@shared/api'
 import type { ViewState } from '@shared/types'
 
-export type Page = 'dashboard' | 'transactions' | 'contracts' | 'collaboration' | 'performance' | 'organization' | 'settings'
+export type Page =
+  | 'dashboard'
+  | 'proposals'
+  | 'transactions'
+  | 'contracts'
+  | 'collaboration'
+  | 'performance'
+  | 'organization'
+  | 'settings'
 
 export interface Route {
   page: Page
