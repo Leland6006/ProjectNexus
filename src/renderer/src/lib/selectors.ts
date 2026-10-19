@@ -77,6 +77,7 @@ export function counterpartyGroups(s: ViewState): CounterpartyGroup[] {
     g.transactions.push(t)
     groups.set(other, g)
   }
+  for (const cp of s.counterparties) if (!groups.has(cp.id)) groups.set(cp.id, { orgId: cp.id, name: cp.name, transactions: [] })
   return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
 }
 

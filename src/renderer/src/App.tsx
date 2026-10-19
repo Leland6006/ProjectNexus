@@ -1,4 +1,4 @@
-import { Component, useEffect, type ErrorInfo, type ReactNode } from 'react'
+import { Component, Suspense, lazy, useEffect, type ErrorInfo, type ReactNode } from 'react'
 import { Shell } from './components/Shell'
 import { Spinner, Toasts, Button } from './components/ui'
 import { useApp } from './store'
@@ -8,7 +8,7 @@ import ActionsPage from './pages/Actions'
 import BusinessList, { ArchivedBusiness } from './pages/Business'
 import ProjectWorkspace from './pages/Project'
 import ContractsPage from './pages/Contracts'
-import ContractEditor from './pages/ContractEditor'
+const ContractEditor = lazy(() => import('./pages/ContractEditor'))
 import FinancePage from './pages/Finance'
 import MemoryPage from './pages/Memory'
 import SettingsPage from './pages/Settings'
@@ -93,7 +93,7 @@ export default function App() {
     <>
       <Shell>
         <ErrorBoundary>
-          <Router />
+          <Suspense fallback={<Spinner label="正在打开页面" />}><Router /></Suspense>
         </ErrorBoundary>
       </Shell>
       <Toasts />

@@ -1,16 +1,17 @@
 import { Building2, Scale } from 'lucide-react'
 import { ROLE_LABEL } from '@shared/types'
 import { Badge, Card, CardHeader, PageHeader } from '@/components/ui'
-import { currentUser, directory } from '@/lib/selectors'
+import { currentUser } from '@/lib/selectors'
 import { useView } from '@/store'
 
 export default function Organization() {
   const s = useView()
   const me = currentUser(s)
-  const { organizations, users } = directory(s)
+  const organizations = s.organizations.filter((o) => o.id === me.orgId)
+  const users = s.users.filter((u) => u.orgId === me.orgId)
   return (
     <div className="mx-auto max-w-4xl p-6">
-      <PageHeader title="企业与成员" subtitle="演示环境中的虚构企业与账号。所有名称均为虚构。" />
+      <PageHeader title="当前企业成员" subtitle="当前为本机演示成员；真实账号注册、成员邀请与权限管理将在试点阶段启用。" />
       <div className="space-y-4">
         {organizations.map((o) => (
           <Card key={o.id}>

@@ -124,7 +124,7 @@ function ActionsNav() {
     { view: 'overview', label: '经营概况' },
     { view: 'attention', label: '需要关注', count: attention },
     { view: 'decisions', label: '待我决策', count: pendingCount(s.proposals) },
-    { view: 'executing', label: '执行中', tag: '未启用' },
+    { view: 'executing', label: '执行中', count: s.tasks.filter((t) => !['completed', 'cancelled'].includes(t.status)).length },
     { view: 'done', label: '已处理', count: decided }
   ]
   return (
@@ -208,10 +208,10 @@ function FinanceNav() {
   const current = route.module === 'finance' ? route.view : null
   const items: { view: FinanceView; label: string; count?: number; tag?: string }[] = [
     { view: 'overview', label: '资金概览' },
-    { view: 'receivables', label: '应收应付', tag: '未启用' },
-    { view: 'records', label: '收支记录', tag: '未启用' },
+    { view: 'receivables', label: '应收应付', count: s.cashPlans.filter((p) => p.status === 'active').length },
+    { view: 'records', label: '收支记录', count: s.cashEntries.filter((e) => e.status === 'posted').length },
     { view: 'costs', label: '成本', count: s.costItems.filter((c) => c.orgId === me.orgId).length },
-    { view: 'invoices', label: '发票', tag: '未启用' }
+    { view: 'invoices', label: '发票', count: s.invoiceCases.filter((i) => i.stage !== 'recorded').length }
   ]
   return (
     <div className="space-y-0.5">

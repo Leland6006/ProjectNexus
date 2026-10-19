@@ -27,7 +27,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, VariantPr
 
 export function Button({ className, variant, size, loading, children, disabled, ...props }: ButtonProps) {
   return (
-    <button className={cn(buttonVariants({ variant, size }), className)} disabled={disabled || loading} {...props}>
+    <button type="button" className={cn(buttonVariants({ variant, size }), className)} disabled={disabled || loading} {...props}>
       {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
       {children}
     </button>

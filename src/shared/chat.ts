@@ -1,7 +1,7 @@
 // Nexus conversations: limits, helpers and the runtime adapter boundary.
 //
 // The runtime is whatever eventually answers a message (a model API, DeepSeek Harness,
-// something else). This build ships without one. The boundary exists so that wiring a
+// something else). It is disconnected until explicitly configured. The boundary exists so that wiring a
 // runtime later changes one object in the main process, not the data model or the UI.
 //
 // Two rules hold regardless of which runtime is plugged in:
@@ -9,7 +9,7 @@
 //   to change must come back through NexusService and be checked there.
 // - When no runtime is connected, Nexus says so. It never fabricates an answer.
 
-import type { ChatRole, Conversation } from './types.ts'
+import type { ChatRole, Conversation, ChatMessage, DataReference, ViewState, ProfileUpdateDraft } from './types.ts'
 
 export const CHAT_MESSAGE_MAX = 4000
 export const CHAT_TITLE_MAX = 60
@@ -19,6 +19,10 @@ export interface RuntimeRequest {
   conversationId: string
   userId: string
   text: string
+  history?: ChatMessage[]
+  view?: ViewState
+  signal?: AbortSignal
+  onDelta?: (body: string) => void
 }
 
 export interface RuntimeReply {
@@ -27,6 +31,8 @@ export interface RuntimeReply {
   body: string
   /** Identifier of the runtime that produced the reply. */
   runtime: string
+  references?: DataReference[]
+  profileUpdate?: ProfileUpdateDraft
 }
 
 export interface NexusRuntime {

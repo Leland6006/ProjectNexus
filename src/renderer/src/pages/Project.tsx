@@ -326,7 +326,7 @@ export default function ProjectWorkspace({ transactionId, tab }: { transactionId
               运行协同分析
             </Button>
           )}
-          {invitePending && (
+          {invitePending && !otherOrg?.localOnly && (
             <Button
               variant="primary"
               loading={busy}
@@ -334,9 +334,10 @@ export default function ProjectWorkspace({ transactionId, tab }: { transactionId
               onClick={() => void act('inviteCounterparty', [tx.id], `已邀请 ${otherOrg?.shortName}`)}
             >
               <UserPlus className="h-3.5 w-3.5" />
-              邀请 {otherOrg?.shortName} 协作
+              邀请 {otherOrg?.shortName} 协作（本地演示）
             </Button>
           )}
+          {invitePending && otherOrg?.localOnly && <span className="self-center text-xs text-ink-500">本地交易对象 · 线上邀请尚未启用</span>}
           {mustAccept && (
             <Button variant="primary" loading={busy} onClick={() => void act('acceptInvitation', [tx.id], '已加入业务协作')}>
               接受邀请并加入

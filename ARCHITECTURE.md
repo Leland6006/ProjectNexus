@@ -41,7 +41,7 @@ Renderer (React)  --window.nexus.call(method, ...args)-->  Preload  --IPC 'nexus
 ## 数据模型
 
 Organization、User、Transaction、Contract、ContractVersion、Comment、Suggestion、Message、Milestone、Activity；
-协同分析另有 Claim、Proposal、CostItem、CashAccount；第一轮新增 Conversation、ChatMessage（schema v3）。
+协同分析另有 Claim、Proposal、CostItem、CashAccount；第一轮新增 Conversation、ChatMessage（schema v3）；第二轮 schema v4 为企业登记对象增加可选经营资料、记录来源与更新者，并使旧口径待决策方案失效。
 `Transaction` 是根对象：合同、消息、履约节点、活动都通过 `transactionId` 归属于交易。
 `Contract.clauses` 是工作草稿；`ContractVersion` 是不可变快照；`Suggestion` 记录提议时的原文，接受时若条款已变则拒绝（防止覆盖）。
 
@@ -119,13 +119,47 @@ Organization、User、Transaction、Contract、ContractVersion、Comment、Sugge
   访问他人会话一律返回“不存在”。
 - 会话在发送第一条消息时才创建，不保存空草稿；演示数据不预置任何聊天记录。
 - 聊天服务方法只写 `conversations` 和 `chatMessages`，**不会**写入 Claim 或其他业务数据。
-- 主进程持有一个 `NexusRuntime`（`src/shared/chat.ts`）。本版本是 `NO_RUNTIME`：每条消息只得到一条 `system` 状态说明
-  “尚未连接 AI”，不会生成 `assistant` 回复。运行时出错时同样写入状态说明。
-- 回复异步返回时如果当前账号已切换，丢弃回复，不写入。
-- 后续接入模型 API 或 DeepSeek Harness 时，只替换 `setRuntime(...)` 注入的对象；运行时想修改任何业务数据，
-  仍必须通过 `NexusService` 的权限与输入校验，不能只依赖提示词。
+- 主进程持有 `NexusRuntime`。未配置时为 `NO_RUNTIME`；设置中配置后注入 DeepSeek API 适配器，并为专业分析注入同一提供方的 `LlmClient`。
+- `src/main/ai.ts` 实现有界工具循环、SSE 流解析、超时与错误清理。请求禁用 thinking，避免将推理过程当作回答显示；不记录或回传密钥。
+- 运行时仅收到权限筛选的快照和本会话历史，不含演示目录、其他会话或内部讨论。`src/shared/businessContext.ts` 提供只读的公司、项目、合同正文、经营提醒与现金流工具；没有通用 SQL 或直接写入工具。`propose_profile_update` 只返回资料草稿；保存到本人会话后，确认 API 再校验归属、未处理状态与资料更新时间，经 `NexusService` 写入。
+- 历史消息限24条、16000字；工具结果有大小限制，超范围时要求缩小问题；合同正文只返回前40条、每条2000字，并注明截断限制。
+- `nexus:chat-progress` 是固定的单向事件通道，preload 只暴露订阅与取消订阅。事件带账号与会话标识；start/end 附权限视图，delta 只包含临时回答。完整回答及数据依据在结束时持久化。
+- 每个本地会话同一时间只运行一次聊天。取消、切换身份、重置或退出会中断请求；身份代际变化或源数据变化后，迟到回答不写回。重试复用用户原消息，不重复追加。
+- 连接配置经 `safeStorage` 加密后原子写入独立文件 `ai-connection.enc`；加密不可用（包括 Linux basic_text）拒绝保存。配置状态只表示本地配置存在，远端认证在实际请求时验证。
+- 启用前页面说明会将聊天与授权企业数据发送至 DeepSeek；未配置时无模型网络请求。渲染进程的网络 CSP 不放宽，所有 API 请求仍在主进程完成。
+- 本轮支持聊天准备公司经营资料草稿，用户点击确认后才更新；其他业务维护采用表单预览和确认保存。Harness 与分步执行留待后续轮次。
+
+## 第二轮经营数据与预测
+
+`NexusService` 校验公司资料、金额、真实日期、成本状态与归属。资料修改使待决策方案标记为失效，保留原状态与历史；审批服务和页面均拒绝旧方案。重新分析生成的新结果解除失效标记。
+
+`projectForecast` 在既有计算函数前校验付款方、验收日、现金账户与成本。不同余额日期、余额日前未核对付款或缺少数据时返回缺失项，不将未知值作为零。已支付成本视为已含在余额快照中，不再扣除；未来同日收付按日净额计算。付款方视角将合同付款列为流出。它只计算一个项目，不能叠加为公司整体现金流。
+
+新演示数据统一供方、付款方、合同正文、履约计划与预计验收日期，示例缺口为12月1日438000元。升级已有数据时不会猜测付款方或覆盖原合同，用户需核对后重新分析。
 
 ## 未来云端架构
 
 `src/shared` 的业务引擎与权限函数可直接迁移到服务端；渲染进程的 `window.nexus.call` 替换为 HTTPS/WebSocket 客户端；
 JSON 存储替换为 PostgreSQL；认证由身份服务提供，`currentUserId` 来自会话令牌而非本地切换。
+
+
+## 第三、四轮数据与流程
+
+- schema v5 持久化 `AnalysisRun` / `AnalysisStep` 检查点、`BusinessTask` / `TaskStep` / 历史。运行源修订取自主进程权限过滤视图；账号、模型和数据变化阻止旧结果写入，重启将 running 转成 paused。
+- 主进程固定进度通道仅发布当前账号的 ViewState；Renderer 不持有任意数据库或文件接口。业务写入仍由服务校验。
+- schema v6 的 `Counterparty` 属于本企业，无平台身份；为兼容旧交易权限，使用同 ID 的 localOnly Organization 引用，受 ownerOrgId 约束。目录不向其他企业或律师泄露这些联系人，禁止向其发送模拟在线邀请。未来服务端应单列平台组织关联与验证流程。
+- 原生文件选择器只在主进程打开。仅选择的 DOCX/PDF 被读取；限制 10 MB / PDF 50 页 / 正文 10 万字 / DOCX XML 2 MB。DOCX 仅解压正文；PDF 不执行脚本。字段识别保留引用，不作为企业事实。
+- `ContractImportDraft` 仅本人可见，确认在数据库副本上校验后统一落库，重复确认返回原合同。新合同是未经对外确认的文字草稿，付款镜像为空。
+- `InternalReview` 对方与外部律师不可见，指定同企业其他成员处理，绑定正文、付款安排与版本列表。发起审阅后，当前稿未通过时禁止本企业确认最终版本；最终版与工作稿必须一致。
+- DeepSeek Harness 验证在隔离临时目录进行，依赖发布缺失而未采用。现有检查点与任务来自 Nexus 自有实现，不宣称为 Harness 集成。
+
+
+## 第五轮：统一资金台账
+
+schema v7 新增 CashPlan、CashEntry、InvoiceCase。ledger.ts 负责权限、输入、幂等、核销和纯计算，NexusService 负责保存与旧结论失效。资金和发票记录仅企业成员可见，律师和交易对方不收到这些数组。
+
+金额按分计算；余额快照定义为日终，只纳入其后实际记录，不直接修改快照。公司预测聚合一次当前资金及未核销计划，不叠加合同、节点与成本。成本来源按成本 ID 去重，有核销历史时必须复用原计划。作废保留记录，重新核对历史快照由用户完成。
+
+主进程只公开固定业务方法。AI finance_context 读取过滤视图并隐藏发票购买方识别信息；专业协同中的财务节点从统一台账给出公司条件预测，不能将其归因于单个项目。分析/聊天修订检查已覆盖计划、收支与发票事项。
+
+第六轮会将当前模拟 User.orgId 拆分为真实身份与企业成员关系，新增服务端认证、授权、企业好友状态机与消息同步。见 docs/ROUND6_REAL_OPC_PLAN.md；当前版本仍无真实线上好友或账号管理。

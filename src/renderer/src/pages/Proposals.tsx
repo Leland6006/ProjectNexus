@@ -63,7 +63,7 @@ function ProposalCard({ id }: { id: string }) {
   const author = p.createdBy.startsWith('agent:') ? AGENT_LABEL[p.createdBy.slice(6) as keyof typeof AGENT_LABEL] ?? 'Nexus Agent' : '人工起草'
 
   const decide = async (approve: boolean): Promise<void> => {
-    if (approve) await act('approveProposal', [p.id], '已采纳方案。依据中的推断和建议保持原状态，需要时请逐条确认。')
+    if (approve && await act('approveProposal', [p.id], '已采纳方案并创建执行任务；预测保持原状态。')) navigate({ module: 'actions', view: 'executing' })
     else await act('rejectProposal', [p.id], '已忽略该建议')
   }
 
@@ -90,7 +90,7 @@ function ProposalCard({ id }: { id: string }) {
         {stale && (
           <div className="flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            合同已在建议生成之后被修改，建议已失效。请重新运行分析，再决定是否采纳。
+            合同或基础资料已更新，建议已失效。请重新运行分析，再决定是否采纳。
           </div>
         )}
 
@@ -103,6 +103,7 @@ function ProposalCard({ id }: { id: string }) {
 
         {p.rationale && <div className="whitespace-pre-line text-sm leading-relaxed text-ink-700">{p.rationale}</div>}
 
+        {p.analysisRunId && <details className="rounded border border-slate-100 p-3"><summary className="cursor-pointer text-sm text-brand-700">查看本方案的专业协同过程</summary>{s.analysisRuns.find((r) => r.id === p.analysisRunId)?.steps.map((step) => <div key={step.agentId} className="mt-3"><p className="text-sm font-medium">{AGENT_LABEL[step.agentId]} · {step.status === 'skipped' ? '未配置模型，已跳过' : step.status === 'completed' ? '完成' : step.status}</p>{step.findings.map((f, n) => <p key={n} className="whitespace-pre-wrap text-sm text-ink-600">{f}</p>)}</div>)}</details>}
         {p.actions.length > 0 && (
           <div>
             <p className="mb-1.5 text-xs font-medium text-ink-500">建议动作</p>
@@ -137,7 +138,7 @@ function ProposalCard({ id }: { id: string }) {
 
       {p.status === 'pending' && (
         <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-4 py-2.5">
-          <span className="mr-auto text-xs text-ink-400">采纳只记录你的决定并生成合同修改建议；依据中的推断不会因此变成事实</span>
+          <span className="mr-auto text-xs text-ink-400">采纳后创建执行任务，具备条款草稿时另建修改建议；依据中的推断不会变成事实</span>
           <Button size="sm" loading={busy} onClick={() => void decide(false)}>
             <X className="h-3.5 w-3.5" />
             忽略

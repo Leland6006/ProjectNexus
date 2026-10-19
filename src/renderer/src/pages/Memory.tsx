@@ -1,3 +1,4 @@
+import { ProfileEditor } from '@/components/DataEditors'
 import { useMemo } from 'react'
 import { sortClaimsByStatus, unconfirmedClaims } from '@shared/proposalView'
 import type { Claim } from '@shared/types'
@@ -36,7 +37,7 @@ function ClaimGroups({ claims, dense }: { claims: Claim[]; dense?: boolean }) {
   )
 }
 
-const PROFILE_FIELDS = ['所属行业', '主营业务', '经营目标', '团队规模', '注册地区']
+const PROFILE_FIELDS = [['所属行业', 'industry'], ['主营业务', 'business'], ['经营目标', 'goal'], ['经营阶段', 'stage'], ['团队规模', 'teamSize'], ['注册地区', 'region']] as const
 
 function Profile() {
   const s = useView()
@@ -64,16 +65,16 @@ function Profile() {
       </Card>
 
       <Card className="mt-4">
-        <CardHeader title="经营信息" subtitle="尚未填写的项目显示“待补充”，Nexus 不会自行推测" />
+        <CardHeader title="经营信息" subtitle="来源：用户录入并确认" action={me.role !== 'external_counsel' && <ProfileEditor profile={org?.profile} />} />
         <dl className="divide-y divide-slate-100 text-sm">
-          {PROFILE_FIELDS.map((k) => (
+          {PROFILE_FIELDS.map(([k, key]) => (
             <div key={k} className="flex justify-between gap-4 px-4 py-2.5">
               <dt className="text-ink-500">{k}</dt>
-              <dd className="text-ink-400">待补充</dd>
+              <dd className="max-w-[65%] whitespace-pre-wrap text-right text-ink-700">{org?.profile?.[key] || '待补充'}</dd>
             </div>
           ))}
         </dl>
-        <p className="border-t border-slate-100 px-4 py-2.5 text-xs text-ink-500">编辑公司资料将在第二轮提供。</p>
+        <p className="border-t border-slate-100 px-4 py-2.5 text-xs text-ink-500">{org?.profile ? `更新于 ${org.profile.updatedAt} · 来源：人工确认` : '补充企业背景后，Nexus 可结合这些资料回答。'}</p>
       </Card>
     </div>
   )

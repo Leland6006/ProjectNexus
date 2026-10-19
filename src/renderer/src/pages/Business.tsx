@@ -1,3 +1,4 @@
+import { CounterpartyButton, ContractImportButton } from '@/components/BusinessTools'
 import { useMemo, useState } from 'react'
 import { Plus, Search } from 'lucide-react'
 import { TRANSACTION_STATUS_LABEL, type TransactionStatus } from '@shared/types'
@@ -49,7 +50,7 @@ function NewBusinessDialog({ onClose, defaultCounterpartyId }: { onClose: () => 
             <Input value={orgOf(s, me.orgId)?.name ?? ''} disabled />
           </Field>
         </div>
-        <Field label="交易对象" hint="本地演示中只能选择已有的演示企业。无需对方注册即可建立交易对象将在后续版本提供。">
+        <Field label="交易对象" hint="可选择已有企业，或新增无需注册的本地交易对象。">
           <Select value={form.counterpartyOrgId} onChange={set('counterpartyOrgId')}>
             {counterparties.map((o) => (
               <option key={o.id} value={o.id}>
@@ -58,6 +59,7 @@ function NewBusinessDialog({ onClose, defaultCounterpartyId }: { onClose: () => 
             ))}
           </Select>
         </Field>
+        <CounterpartyButton onCreated={(id) => setForm((f) => ({ ...f, counterpartyOrgId: id }))} />
         <div className="grid grid-cols-2 gap-3">
           <Field label="合同金额（人民币，元）">
             <Input type="number" min={0} value={form.amount} onChange={set('amount')} placeholder="0" />
@@ -140,10 +142,10 @@ export default function BusinessList({ orgId, create }: { orgId?: string; create
         }
         actions={
           me.role !== 'external_counsel' && (
-            <Button variant="primary" onClick={() => setOpen(true)}>
+            <div className="flex gap-2"><CounterpartyButton /><ContractImportButton /><Button variant="primary" onClick={() => setOpen(true)}>
               <Plus className="h-4 w-4" />
               新建业务
-            </Button>
+            </Button></div>
           )
         }
       />
@@ -169,6 +171,7 @@ export default function BusinessList({ orgId, create }: { orgId?: string; create
         <span className="ml-auto text-xs text-ink-500">共 {rows.length} 项</span>
       </div>
 
+      {orgId && s.counterparties.find((c) => c.id === orgId) && <div className="mb-3 rounded-lg border p-3 text-sm text-ink-500">本企业的本地交易对象 · 联系人：{s.counterparties.find((c) => c.id === orgId)?.contactName || '未填写'} · 邮箱：{s.counterparties.find((c) => c.id === orgId)?.email || '未填写'}<p className="mt-1 text-xs">线上邀请尚未启用；可在此管理业务与合同。</p></div>}
       <Card>
         {rows.length === 0 ? (
           <EmptyState title="没有符合条件的业务" hint={s.transactions.length === 0 ? '当前账号没有可访问的业务' : '试试调整搜索词或筛选条件'} />

@@ -1,3 +1,5 @@
+import { internalReviewBlocker } from '@shared/terms'
+import { InternalReviewPanel } from '@/components/contract/InternalReviewPanel'
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Bot, CheckCheck, Clock, GitCompare, History, MessageSquare, Save, Share2 } from 'lucide-react'
 import type { Clause } from '@shared/types'
@@ -16,13 +18,14 @@ import { accessFor, orgOf } from '@/lib/selectors'
 import { projectRoute } from '@/routes'
 import { useApp, useView } from '@/store'
 
-type RightTab = 'comments' | 'suggestions' | 'activity' | 'ai'
+type RightTab = 'comments' | 'suggestions' | 'activity' | 'ai' | 'review'
 
 const TABS = [
   ['comments', '评论', MessageSquare],
   ['suggestions', '修改建议', GitCompare],
   ['activity', '协商记录', History],
-  ['ai', 'AI助手', Bot]
+  ['ai', 'AI助手', Bot],
+  ['review', '内部审阅', CheckCheck]
 ] as const
 
 function clauseId(): string {
@@ -47,7 +50,7 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
   const [draft, setDraft] = useState<Clause[]>(contract?.clauses ?? [])
   const [dirty, setDirty] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(contract?.clauses[0]?.id ?? null)
-  const [tab, setTab] = useState<RightTab>('comments')
+  const [tab, setTab] = useState<RightTab>(s.internalReviews.some((r) => r.contractId === contractId && r.reviewerId === s.currentUserId && r.status === 'pending') ? 'review' : 'comments')
   const [showVersions, setShowVersions] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
   const [suggestFor, setSuggestFor] = useState<string | null>(null)
@@ -86,6 +89,7 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
   }
 
   const a = accessFor(s, tx)
+  const reviewBlock = internalReviewBlocker(contract, s.versions, s.internalReviews, a.orgId ?? '')
   const locked = contract.status === 'finalized'
   const canEdit = a.isOwner && !locked
   const versions = sortVersionsDesc(s.versions.filter((v) => v.contractId === contract.id))
@@ -133,7 +137,7 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
             <History className="h-3.5 w-3.5" />
             版本历史（{versions.length}）
           </Button>
-          {a.isOwner && !contract.sharedWithCounterparty && (
+          {a.isOwner && !contract.sharedWithCounterparty && !orgOf(s, tx.counterpartyOrgId)?.localOnly && (
             <Button
               loading={busy}
               onClick={() => {
@@ -160,9 +164,9 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
           {a.isParty && contract.sharedWithCounterparty && !locked && latest && (
             <Button
               variant={iConfirmed ? 'secondary' : 'primary'}
-              disabled={!canConfirmFinal({ isParty: a.isParty, shared: contract.sharedWithCounterparty, locked, hasLatest: true, alreadyConfirmed: iConfirmed, dirty })}
+              disabled={!!reviewBlock || !canConfirmFinal({ isParty: a.isParty, shared: contract.sharedWithCounterparty, locked, hasLatest: true, alreadyConfirmed: iConfirmed, dirty })}
               loading={busy}
-              title={dirty ? '请先保存新版本再确认' : undefined}
+              title={dirty ? '请先保存新版本再确认' : reviewBlock ?? undefined}
               onClick={() => void act('confirmFinal', [contract.id, latest.id], '已确认该版本')}
             >
               <CheckCheck className="h-3.5 w-3.5" />
@@ -172,6 +176,7 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
         </div>
       </div>
 
+      {reviewBlock && <div className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-800">{reviewBlock} · 请在右侧「内部审阅」处理</div>}
       {locked && <div className="border-b border-emerald-200 bg-emerald-50 px-5 py-2 text-xs text-emerald-800">双方已确认最终版本，合同内容已锁定，不能再修改。</div>}
       {!canEdit && !locked && (
         <div className="border-b border-blue-200 bg-blue-50 px-5 py-2 text-xs text-blue-800">
@@ -240,6 +245,7 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
               />
             )}
             {tab === 'activity' && <ActivityPanel contract={contract} />}
+            {tab === 'review' && <InternalReviewPanel contract={contract} dirty={dirty} />}
             {tab === 'ai' && <AiPanel contract={contract} />}
           </div>
         </aside>

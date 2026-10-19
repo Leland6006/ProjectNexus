@@ -13,7 +13,7 @@ const QUICK_STARTS = ['看看公司最近需要关注什么', '评估一笔新�
 function RuntimeBadge() {
   const runtime = useView().runtime
   if (runtime.connected) {
-    return <span className="text-xs text-emerald-700">已连接 AI（{runtime.id}）</span>
+    return <span className="text-xs text-emerald-700">AI 已配置（{runtime.id}）</span>
   }
   return (
     <span className="inline-flex items-center gap-1 text-xs text-ink-400" title="消息会保存在会话中，但不会生成回答，也不会修改业务数据">
@@ -40,7 +40,8 @@ function Composer({
 }) {
   const busy = useApp((x) => x.busy)
   const id = useId()
-  const canSend = value.trim().length > 0 && !busy
+  const draft = useApp((x) => x.chatDraft)
+  const canSend = value.trim().length > 0 && !busy && !draft
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
     // Enter sends, Shift+Enter adds a line. Never send while an IME is composing Chinese.
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -64,6 +65,7 @@ function Composer({
         className="block w-full resize-none rounded-2xl bg-transparent px-4 pt-3 text-sm leading-6 text-ink-900 outline-none placeholder:text-ink-400"
       />
       <div className="flex items-center justify-between gap-3 px-3 pb-2.5">
+        {draft && <Button size="sm" onClick={() => void useApp.getState().act('cancelChat', [])}>停止生成</Button>}
         <RuntimeBadge />
         <button
           type="button"
@@ -163,7 +165,8 @@ function NexusHome() {
     if (!(await act('startConversation', [body]))) return
     setText('')
     const created = useApp.getState().state?.conversations.find((c) => !before.has(c.id))
-    if (created) navigate({ module: 'nexus', conversationId: created.id })
+    const route = useApp.getState().route
+    if (created && route.module === 'nexus' && !route.conversationId) navigate({ module: 'nexus', conversationId: created.id })
   }
 
   return (
@@ -224,6 +227,8 @@ function ConversationView({ id }: { id: string }) {
   const s = useView()
   const act = useApp((x) => x.act)
   const navigate = useApp((x) => x.navigate)
+  const draft = useApp((x) => x.chatDraft)
+  const busy = useApp((x) => x.busy)
   const conv = s.conversations.find((c) => c.id === id)
   const messages = useMemo(
     () => s.chatMessages.filter((m) => m.conversationId === id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
@@ -236,7 +241,7 @@ function ConversationView({ id }: { id: string }) {
 
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end' })
-  }, [messages.length])
+  }, [messages.length, draft?.body])
 
   if (!conv) {
     return (
@@ -316,9 +321,13 @@ function ConversationView({ id }: { id: string }) {
               <div key={m.id}>
                 <p className="mb-1 text-xs text-ink-400">Nexus · {m.runtime}</p>
                 <p className="whitespace-pre-wrap text-sm leading-6 text-ink-900">{m.body}</p>
+                {m.profileUpdate && <div className="mt-3 space-y-3 rounded-xl border border-brand-200 bg-brand-50 p-4"><p className="text-sm font-medium">公司经营资料修改预览</p><dl className="space-y-1 text-sm">{Object.entries(m.profileUpdate.values).map(([key, value]) => <div key={key} className="flex gap-3"><dt className="w-20 shrink-0 text-ink-500">{({ industry: '行业', business: '主营业务', goal: '经营目标', stage: '经营阶段', region: '地区', teamSize: '团队规模' } as Record<string, string>)[key]}</dt><dd className="whitespace-pre-wrap">{value || '未填写'}</dd></div>)}</dl>{m.profileUpdate.appliedAt ? <p className="text-xs text-emerald-700">已确认保存 · {formatDateTime(m.profileUpdate.appliedAt)}</p> : <><p className="text-xs text-ink-500">仅是草稿，核对后才会更新。其他业务数据不会改变。</p><Button size="sm" variant="primary" loading={busy} onClick={() => void act('confirmProfileUpdate', [m.id], '已按确认的草稿更新经营资料')}>确认并更新公司资料</Button></>}</div>}
+                {!!m.references?.length && <details className="mt-3 rounded-lg border border-slate-100 p-3"><summary className="cursor-pointer text-xs text-ink-500">本次使用的数据依据（{m.references.length}）</summary><ul className="mt-2 space-y-2 text-xs text-ink-600">{m.references.map((r) => <li key={r.id}><strong>{r.label}</strong> · {r.detail}</li>)}</ul></details>}
               </div>
             )
           )}
+          {draft?.conversationId === id && <div aria-live="polite"><p className="mb-1 text-xs text-ink-500">Nexus 正在查询企业数据并生成回答…</p><p className="whitespace-pre-wrap text-sm leading-6">{draft.body}</p></div>}
+          {!draft && lastNotice && lastNotice.runtime !== 'none' && messages.at(-1)?.role === 'system' && <Button size="sm" loading={busy} onClick={() => void act('retryChat', [id])}>重试上一条问题</Button>}
           <div ref={end} />
         </div>
       </div>

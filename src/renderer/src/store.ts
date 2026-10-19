@@ -15,6 +15,7 @@ export interface Toast {
 interface AppStore {
   state: ViewState | null
   loading: boolean
+  chatDraft: { conversationId: string; body: string } | null
   busy: boolean
   route: Route
   /** Last page per module, so switching modules returns to where the user was. */
@@ -37,6 +38,10 @@ interface AppStore {
 }
 
 let toastSeq = 0
+let pendingCount = 0
+let identityEpoch = 0
+let workflowUnsubscribe: (() => void) | undefined
+let chatUnsubscribe: (() => void) | undefined
 
 function visibleFor(s: ViewState): VisibleIds {
   return {
@@ -65,6 +70,7 @@ function routeChange(cur: AppStore, route: Route): Partial<AppStore> {
 export const useApp = create<AppStore>((set, get) => ({
   state: null,
   loading: true,
+  chatDraft: null,
   busy: false,
   route: HOME,
   lastRoutes: {},
@@ -74,6 +80,17 @@ export const useApp = create<AppStore>((set, get) => ({
   toasts: [],
 
   async init() {
+    workflowUnsubscribe?.()
+    workflowUnsubscribe = window.nexus.onWorkflowProgress?.((state) => { if (get().state?.currentUserId === state.currentUserId) set({ state }) })
+    chatUnsubscribe?.()
+    chatUnsubscribe = window.nexus.onChatProgress?.((event) => {
+      const cur = get()
+      if (cur.state?.currentUserId !== event.userId) return
+      const patch: Partial<AppStore> = { chatDraft: event.stage === 'end' ? null : { conversationId: event.conversationId, body: event.body } }
+      if (event.state) patch.state = event.state
+      if (event.stage === 'start' && cur.route.module === 'nexus' && !cur.route.conversationId) patch.route = { module: 'nexus', conversationId: event.conversationId }
+      set(patch)
+    })
     const res = await window.nexus.call('getState')
     if (res.ok) set({ state: res.state, loading: false, route: HOME })
     else {
@@ -83,9 +100,14 @@ export const useApp = create<AppStore>((set, get) => ({
   },
 
   async act(method, args, successText) {
+    const switching = method === 'switchUser' || method === 'resetDemo'
+    if (switching) { identityEpoch++; set({ chatDraft: null }) }
+    const epoch = identityEpoch
+    pendingCount++
     set({ busy: true })
     try {
       const res = await window.nexus.call(method, ...args)
+      if (epoch !== identityEpoch) return false
       if (res.ok) {
         const cur = get()
         const identityChanged = !cur.state || cur.state.currentUserId !== res.state.currentUserId || method === 'resetDemo'
@@ -101,6 +123,7 @@ export const useApp = create<AppStore>((set, get) => ({
           set({ state: res.state, lastRoutes, ...(next !== cur.route ? routeChange({ ...cur, lastRoutes }, next) : {}) })
         }
         if (successText) get().toast('success', successText)
+        if (res.notice) get().toast('info', res.notice)
         return true
       }
       get().toast('error', res.code === 'PERMISSION_DENIED' ? `权限不足：${res.message}` : res.message)
@@ -109,7 +132,8 @@ export const useApp = create<AppStore>((set, get) => ({
       get().toast('error', '操作失败，请重试')
       return false
     } finally {
-      set({ busy: false })
+      pendingCount--
+      set({ busy: pendingCount > 0 })
     }
   },
 

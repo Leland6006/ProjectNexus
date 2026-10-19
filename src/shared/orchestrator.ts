@@ -1,3 +1,7 @@
+import { companyFinance, businessDate } from './ledger.ts'
+import { taskForAction } from './workflows.ts'
+import { sanitizeHtml } from './sanitize.ts'
+import { projectForecast } from './businessContext.ts'
 // Cross-agent orchestration.
 //
 // This is a deterministic graph with three labelled model calls, not four agents
@@ -10,10 +14,12 @@
 
 import { buildAgentContext, mergeClaim, renderContext, selectPremises, type AgentId, type AgentContext } from './context.ts'
 import { detectPaymentTermsChange, latestVersionPair } from './events.ts'
-import { describeForecast, forecastCashflow } from './finance.ts'
+import { describeForecast } from './finance.ts'
 import { buildViewState, canSeeItem, canViewContract, canViewTransaction, effectiveOrgId } from './permissions.ts'
 import {
   NexusError,
+  type AnalysisStep,
+  type BusinessTask,
   type Activity,
   type Claim,
   type Contract,
@@ -29,6 +35,7 @@ import {
 export interface LlmRequest {
   system: string
   user: string
+  signal?: AbortSignal
 }
 
 export interface LlmClient {
@@ -44,6 +51,7 @@ const NO_MODEL = '未接入模型，跳过该专业视角。'
 export function routeAgents(event: DomainEvent | null): AgentId[] {
   if (!event) return []
   switch (event.type) {
+    case 'business_review_requested':
     case 'payment_terms_changed':
       return ['finance', 'legal', 'ops']
     case 'cost_committed':
@@ -80,6 +88,10 @@ export interface RunOptions {
   representingOrgId?: string | null
   /** Supply a pre-detected event; otherwise the last two versions are diffed. */
   event?: DomainEvent | null
+  signal?: AbortSignal
+  cachedSteps?: AnalysisStep[]
+  onStep?: (step: AnalysisStep) => void
+  onEvent?: (event: DomainEvent | null) => void
 }
 
 function uid(prefix: string): string {
@@ -153,6 +165,8 @@ async function runSpecialist(
     makeId: (prefix: string) => string
     contract: Contract | null
     orgId: string
+    financeBrief?: AgentBrief
+    signal?: AbortSignal
   }
 ): Promise<AgentBrief> {
   const { ctx, llm, now, makeId, contract, orgId, event, db } = args
@@ -161,6 +175,14 @@ async function runSpecialist(
   if (agentId === 'finance') {
     const claims: Claim[] = []
     const findings: string[] = []
+    const ledgerView = buildViewState(db, args.userId, { representingOrgId: args.asOrgId })
+    if (ledgerView.cashPlans.some((p) => p.status === 'active') || ledgerView.cashEntries.some((e) => e.status === 'posted')) {
+      const f = companyFinance(ledgerView, businessDate(now))
+      if (!f.available) return { agentId, findings: f.missing, recommendation: '请先核对账户余额及日期，再做公司资金预测。', claims }
+      const value = `公司已核对计划的条件预测：最大缺口 ¥${f.shortfall!.toLocaleString('zh-CN')}；未来收款延迟时的支出压力 ¥${f.withoutReceiptsShortfall!.toLocaleString('zh-CN')}；尚有 ${f.uncoveredCosts} 项未付成本未关联计划。不代表本项目单独造成的缺口或实际银行状态。`
+      claims.push(makeClaim({ id: makeId('cl'), orgId, transactionId: args.transactionId, key: 'cash.company_plan_gap', label: '公司已核对计划的预计缺口（非单项目）', value, numeric: f.shortfall, unit: 'CNY', status: 'inferred', source: { kind: 'agent', ref: 'finance', detail: f.notes.join('；') }, asOf: now }))
+      return { agentId, findings: [value], recommendation: f.uncoveredCosts > 0 ? '先补齐未覆盖的收付计划，再核对跨项目资金安排。' : f.shortfall! > 0 || f.withoutReceiptsShortfall! > 0 ? '结合公司其他业务，核对付款顺序与收款延期的应对安排。' : null, claims }
+    }
     const terms = contract?.paymentTerms ?? null
 
     if (!terms) {
@@ -168,9 +190,10 @@ async function runSpecialist(
       return { agentId, findings, recommendation: null, claims }
     }
 
-    const costs = db.costItems.filter((c) => c.transactionId === args.transactionId && c.orgId === orgId)
-    const account = db.cashAccounts.find((a) => a.orgId === orgId) ?? null
-    const forecast = forecastCashflow({ transaction: db.transactions.find((t) => t.id === args.transactionId)!, terms, costs, account })
+    const result = projectForecast(buildViewState(db, args.userId, { representingOrgId: args.asOrgId }), args.transactionId)
+    if (!result.available) return { agentId, findings: [`信息不足，无法可靠测算：${result.missing.join('、')}`], recommendation: '请补充付款方、验收日期、现金余额与成本后重新分析。', claims: [] }
+    const forecast = result.forecast
+    const openingBalance = forecast.openingBalance
 
     const prepay = Math.round(db.transactions.find((t) => t.id === args.transactionId)!.amount * terms.prepayRate * 100) / 100
     claims.push(
@@ -205,7 +228,7 @@ async function runSpecialist(
     )
 
     findings.push(
-      `预付款 ¥${prepay.toLocaleString('zh-CN')}，可动用现金 ¥${(account?.openingBalance ?? 0).toLocaleString('zh-CN')}。`
+      `预付款 ¥${prepay.toLocaleString('zh-CN')}，可动用现金 ¥${openingBalance.toLocaleString('zh-CN')}。`
     )
     findings.push(describeForecast(forecast))
     if (event?.type === 'payment_terms_changed') {
@@ -225,8 +248,9 @@ async function runSpecialist(
     agentId === 'legal'
       ? '你是企业的法务顾问。只依据给定的已确认事实作答，逐条输出风险，不要编造条款内容，不要给出确定性法律结论。'
       : '你是企业的经营顾问。只依据给定的已确认事实作答，逐条给出可执行的经营应对，不要编造数据。'
-  const user = `${renderContext(ctx)}\n\n请以「- 」开头的列表输出 3 条以内的结论。`
-  const text = await llm.complete({ system, user })
+  const forecast = agentId === 'ops' ? args.financeBrief?.claims.filter((c) => (c.key === 'cash.gap' || c.key === 'cash.company_plan_gap')).map((c) => c.value).join('；') : ''
+  const user = `${renderContext(ctx)}\n\n${forecast ? `财务条件预测（非已确认事实；只用于比较应对方案，实际结果取决于收付时点）：${forecast}` : ''}\n请以「- 」开头的列表输出 3 条以内的结论。`
+  const text = await llm.complete({ system, user, signal: args.signal })
   const findings = parseBullets(text)
 
   const claims = findings.slice(0, 3).map((f, i) =>
@@ -288,24 +312,31 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestrationRe
   const briefs: AgentBrief[] = []
   const claims: Claim[] = []
 
+  const checkpoint = async (agentId: AnalysisStep['agentId'], keys: string[], work: () => Promise<AgentBrief>): Promise<AgentBrief> => {
+    opts.signal?.throwIfAborted()
+    const cached = opts.cachedSteps?.find((s) => s.agentId === agentId && (s.status === 'completed' || s.status === 'skipped'))
+    if (cached) return { agentId, findings: cached.findings, recommendation: cached.recommendation, claims: cached.claims }
+    const step: AnalysisStep = { agentId, status: 'running', contextKeys: keys, findings: [], claims: [], recommendation: null, error: null, startedAt: new Date().toISOString(), finishedAt: null }
+    opts.onStep?.(structuredClone(step))
+    try {
+      const brief = await work()
+      opts.signal?.throwIfAborted()
+      Object.assign(step, { status: brief.findings.includes(NO_MODEL) ? 'skipped' : 'completed', findings: brief.findings, recommendation: brief.recommendation, claims: brief.claims, finishedAt: new Date().toISOString() })
+      opts.onStep?.(structuredClone(step))
+      return brief
+    } catch (err) {
+      step.status = 'failed'; step.error = opts.signal?.aborted ? '本次节点已暂停，恢复后重试' : '专业分析未完成，可重试'; step.finishedAt = new Date().toISOString()
+      opts.onStep?.(structuredClone(step))
+      throw err
+    }
+  }
+  opts.onEvent?.(event)
   for (const agentId of agents) {
-    const ctx = buildAgentContext(db, userId, agentId, transactionId, {
-      representingOrgId: asOrgId,
-      event
-    })
-    const brief = await runSpecialist(agentId, {
-      db,
-      userId,
-      transactionId,
-      asOrgId,
-      event,
-      ctx,
-      llm,
-      now,
-      makeId,
-      contract,
-      orgId
-    })
+    const ctx = buildAgentContext(db, userId, agentId, transactionId, { representingOrgId: asOrgId, event })
+    const brief = await checkpoint(agentId, [...ctx.claims.map((c) => c.key), ...(agentId === 'finance' ? [...view.cashPlans.map((p) => `收付计划:${p.id}`), ...view.cashEntries.map((e) => `实际记录:${e.id}`), ...view.cashAccounts.map((a) => `余额快照:${a.id}`)] : [])], () => runSpecialist(agentId, {
+      db, userId, transactionId, asOrgId, event, ctx, llm, now, makeId, contract, orgId,
+      financeBrief: briefs.find((b) => b.agentId === 'finance'), signal: opts.signal
+    }))
     briefs.push(brief)
     for (const c of brief.claims) mergeClaim(claims, c)
   }
@@ -322,13 +353,16 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestrationRe
   if (llm) {
     const system =
       '你是 Nexus 主顾问，负责整合法务、财务、经营三个视角。只依据给定的已确认事实，输出一条对用户最有用的建议。'
-    const text = await llm.complete({
-      system,
+    const synthesis = await checkpoint('main', premises.map((c) => c.key), async () => {
+      const text = await llm.complete({
+      system, signal: opts.signal,
       user: `事件：${event?.summary ?? '（无）'}\n\n已确认事实：\n${
         premises.map((c) => `- ${c.label}: ${c.value}`).join('\n') || '- （无）'
-      }\n\n各专业视角：\n${usableFindings.map((f) => `- ${f}`).join('\n')}`
+      }\n\n各专业视角：\n${usableFindings.map((f) => `- [专业判断或条件预测，非事实] ${f}`).join('\n')}`
+      })
+      return { agentId: 'main', findings: parseBullets(text), claims: [], recommendation: null }
     })
-    const lines = parseBullets(text)
+    const lines = synthesis.findings
     if (lines.length > 0) {
       title = lines[0].slice(0, 80)
       rationale = lines.slice(1).join('\n') || rationale
@@ -359,6 +393,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestrationRe
           claimIds: claims.map((c) => c.id),
           eventId: event?.id ?? null,
           status: 'pending',
+          invalidatedReason: null,
           createdBy: 'agent:main',
           createdAt: now,
           resolvedBy: null,
@@ -394,9 +429,11 @@ export interface ApprovalResult {
   claims: Claim[]
   suggestions: Suggestion[]
   activity: Activity
+  tasks: BusinessTask[]
 }
 
 function isStale(db: Database, proposal: Proposal): boolean {
+  if (proposal.invalidatedReason) return true
   if (!proposal.contractId || !proposal.baseVersionId) return false
   return latestVersionId(db, proposal.contractId) !== proposal.baseVersionId
 }
@@ -459,6 +496,7 @@ export function approveProposal(args: {
   // Evidence is reported back unchanged so callers can show what the decision rested on.
   const cited: Claim[] = db.claims.filter((c) => proposal.claimIds.includes(c.id))
 
+  const tasks = proposal.actions.map((action, actionIndex) => taskForAction({ orgId: proposal.orgId, transactionId: proposal.transactionId, contractId: proposal.contractId, proposalId, actionIndex, userId, at, action }))
   const suggestions: Suggestion[] = []
   const contract = proposal.contractId ? db.contracts.find((c) => c.id === proposal.contractId) : undefined
   for (const action of proposal.actions) {
@@ -473,7 +511,7 @@ export function approveProposal(args: {
       authorId: userId,
       orgId,
       originalBody: clause.body,
-      proposedBody: action.proposedBody,
+      proposedBody: sanitizeHtml(action.proposedBody),
       reason: action.detail,
       status: 'pending',
       resolvedBy: null,
@@ -482,6 +520,8 @@ export function approveProposal(args: {
     })
   }
   db.suggestions.push(...suggestions)
+  proposal.executionSuggestionIds = suggestions.map((s) => s.id)
+  db.tasks.push(...tasks.filter((task) => !db.tasks.some((t) => t.proposalId === proposalId && t.actionIndex === task.actionIndex)))
 
   proposal.status = 'approved'
   proposal.resolvedBy = userId
@@ -500,7 +540,7 @@ export function approveProposal(args: {
   }
   db.activities.push(activity)
 
-  return { proposal, claims: cited, suggestions, activity }
+  return { proposal, claims: cited, suggestions, activity, tasks }
 }
 
 export function rejectProposal(args: { db: Database; proposalId: string; userId: string; at: string; representingOrgId?: string | null }): Proposal {

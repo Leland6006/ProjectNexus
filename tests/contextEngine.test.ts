@@ -1,3 +1,4 @@
+import { clausesFingerprint } from '../src/shared/terms.ts'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -10,8 +11,8 @@ import { claimsForProposal } from '../src/shared/proposalView.ts'
 import { createSeedDatabase, DEFAULT_USER_ID, ORG_A, ORG_B } from '../src/shared/seed.ts'
 import { NexusError, type Claim, type ContractVersion, type Database, type PaymentTerms } from '../src/shared/types.ts'
 
-const TERMS_A: PaymentTerms = { prepayRate: 0.5, instalments: [], settlementDays: 15 }
-const TERMS_B: PaymentTerms = { prepayRate: 0.1, instalments: [], settlementDays: 15 }
+const TERMS_A: PaymentTerms = { prepayRate: 0.5, instalments: [], settlementDays: 15, payerOrgId: ORG_B, acceptanceDate: '2026-11-05' }
+const TERMS_B: PaymentTerms = { prepayRate: 0.1, instalments: [], settlementDays: 15, payerOrgId: ORG_B, acceptanceDate: '2026-11-05' }
 
 const TX = 'tx_equip'
 const CONTRACT = 'ct_equip'
@@ -34,7 +35,7 @@ function version(n: number, terms: PaymentTerms | null): ContractVersion {
 function scenario(): Database {
   const db = createSeedDatabase()
   const contract = db.contracts.find((c) => c.id === CONTRACT)!
-  contract.paymentTerms = TERMS_B
+  contract.paymentTerms = { ...TERMS_B, verifiedClausesFingerprint: clausesFingerprint(contract.clauses) }
   db.versions = db.versions.filter((v) => v.contractId !== CONTRACT)
   db.versions.push(version(1, TERMS_A), version(2, TERMS_B))
   return db

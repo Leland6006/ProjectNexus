@@ -1,9 +1,10 @@
+import ExecutionCenter from './ExecutionCenter'
 import { useMemo, type ReactNode } from 'react'
 import { CalendarClock, ChevronRight, FileWarning, Handshake, Sparkles } from 'lucide-react'
 import { attentionItems, type AttentionItem } from '@shared/briefing'
 import { pendingCount } from '@shared/proposalView'
 import { Badge, Button, Card, CardHeader, EmptyState, PageHeader } from '@/components/ui'
-import { NotEnabled, SourceLine } from '@/components/StatusNote'
+import { SourceLine } from '@/components/StatusNote'
 import { formatDateTime } from '@/lib/utils'
 import { currentUser, orgOf } from '@/lib/selectors'
 import { attentionRoute, projectRoute, type ActionsView } from '@/routes'
@@ -11,6 +12,10 @@ import { useApp, useView } from '@/store'
 import Proposals from './Proposals'
 
 const KIND = {
+  finance: { label: '收付计划', tone: 'amber' },
+  invoice: { label: '发票事项', tone: 'blue' },
+  review: { label: '内部审阅', tone: 'blue' },
+  task: { label: '任务', tone: 'blue' },
   decision: { label: '待决策', tone: 'amber' },
   suggestion: { label: '修改建议', tone: 'blue' },
   milestone: { label: '履约期限', tone: 'gray' }
@@ -97,7 +102,7 @@ function Overview() {
         </Card>
 
         <Card className="lg:col-span-2">
-          <CardHeader title="执行进度" subtitle="任务执行尚未启用，这里只显示履约节点的实际状态" />
+          <CardHeader title="执行进度" subtitle="任务进度在「执行中」查看；下方列出履约节点状态" />
           {inProgress.length === 0 ? (
             <p className="px-4 py-4 text-xs text-ink-500">没有进行中的履约节点</p>
           ) : (
@@ -155,25 +160,6 @@ function Attention() {
   )
 }
 
-function Executing() {
-  const navigate = useApp((x) => x.navigate)
-  return (
-    <div className="mx-auto max-w-3xl p-6">
-      <PageHeader title="执行中" />
-      <NotEnabled
-        title="任务执行"
-        detail="Nexus 目前还没有任务模型。采纳一个方案只会生成合同修改建议和活动记录，不会自动创建或执行任务，所以这里不会显示“执行中”的内容。分步流程和任务进度计划在第三轮提供。"
-      >
-        <Button size="sm" onClick={() => navigate({ module: 'actions', view: 'decisions' })}>
-          查看待我决策
-        </Button>
-        <Button size="sm" onClick={() => navigate({ module: 'actions', view: 'attention' })}>
-          查看需要关注
-        </Button>
-      </NotEnabled>
-    </div>
-  )
-}
 
 export default function ActionsPage({ view }: { view: ActionsView }) {
   switch (view) {
@@ -184,8 +170,8 @@ export default function ActionsPage({ view }: { view: ActionsView }) {
     case 'decisions':
       return <Proposals mode="pending" />
     case 'executing':
-      return <Executing />
+      return <ExecutionCenter />
     case 'done':
-      return <Proposals mode="decided" />
+      return <><ExecutionCenter completed /><Proposals mode="decided" /></>
   }
 }

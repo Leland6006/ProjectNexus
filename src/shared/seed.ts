@@ -1,3 +1,4 @@
+import { clausesFingerprint } from './terms.ts'
 // Fictional demo data. All companies, people and contract text are invented.
 
 import { CURRENT_SCHEMA_VERSION } from './migrations.ts'
@@ -52,7 +53,7 @@ const c = (id: string, title: string, body: string): Clause => ({ id, title, bod
 
 const V1_CLAUSES: Clause[] = [
   c('cl_e1', '第一条 合同标的', '<p>供方向需方出售智能巡检机器人共计 20 台，型号为 YH-R300，单价及规格详见附件一《设备清单》。</p>'),
-  c('cl_e2', '第二条 合同价款与付款', '<p>合同总价款为人民币 1,280,000 元（含税）。需方按以下节点付款：</p><ul><li>合同签订后 5 个工作日内支付 30% 预付款；</li><li>设备验收合格后 10 个工作日内支付剩余 70% 款项。</li></ul>'),
+  c('cl_e2', '第二条 合同价款与付款', '<p>合同总价款为人民币 1,280,000 元（含税）。需方按以下节点付款：</p><ul><li>合同签订后 5 个工作日内支付 10% 预付款；</li><li>设备验收合格后 10 个工作日内支付剩余 90% 款项。</li></ul>'),
   c('cl_e3', '第三条 交付与验收', '<p>供方应在预付款到账后 30 日内将设备交付至需方指定地点。需方应在收货后 7 日内完成验收，逾期未提出书面异议的，视为验收合格。</p>'),
   c('cl_e4', '第四条 质量保证', '<p>供方保证设备为全新、合格产品，质保期为验收合格之日起 12 个月。质保期内因设备本身质量问题造成的故障，供方应免费维修或更换。</p>'),
   c('cl_e5', '第五条 违约责任', '<p>任何一方逾期履行义务的，每逾期一日，应按逾期金额的万分之五向对方支付违约金，违约金总额不超过合同总价款的 10%。</p>')
@@ -65,11 +66,12 @@ const CONFIDENTIAL = c(
 )
 const V2_CLAUSES: Clause[] = [
   ...V1_CLAUSES.slice(0, 1),
-  c('cl_e2', '第二条 合同价款与付款', '<p>合同总价款为人民币 1,280,000 元（含税）。需方按以下节点付款：</p><ul><li>合同签订后 5 个工作日内支付 30% 预付款；</li><li>设备验收合格后 10 个工作日内支付剩余 70% 款项，供方应在付款前开具合法有效的增值税专用发票。</li></ul>'),
+  c('cl_e2', '第二条 合同价款与付款', '<p>合同总价款为人民币 1,280,000 元（含税）。需方按以下节点付款：</p><ul><li>合同签订后 5 个工作日内支付 10% 预付款；</li><li>设备验收合格后 10 个工作日内支付剩余 90% 款项，供方应在付款前开具合法有效的增值税专用发票。</li></ul>'),
   ...V1_CLAUSES.slice(2),
   CONFIDENTIAL
 ]
 const V3_CLAUSES: Clause[] = V2_CLAUSES.map((cl) =>
+  cl.id === 'cl_e2' ? c(cl.id, cl.title, cl.body.replace('50% 预付款', '10% 预付款').replace('50% 款项', '90% 款项')) :
   cl.id === 'cl_e3'
     ? c('cl_e3', '第三条 交付与验收', '<p>供方应在预付款到账后 45 日内将设备交付至需方指定地点。需方应在收货后 7 日内完成验收，逾期未提出书面异议的，视为验收合格。</p>')
     : cl
@@ -97,7 +99,7 @@ const transactions: Transaction[] = [
     amount: 1_280_000,
     currency: 'CNY',
     expectedSignDate: '2026-11-05',
-    description: '启明智能向远航精密采购 20 台智能巡检机器人，用于华东仓储中心的自动化巡检升级（演示数据）。',
+    description: '远航精密向启明智能采购 20 台智能巡检机器人，启明为供方，用于华东仓储中心的自动化巡检升级（演示数据）。',
     status: 'negotiating',
     counterpartyStatus: 'joined',
     counselGrants: [{ userId: 'u_a_counsel', grantedByOrgId: ORG_A, grantedByUserId: 'u_a_legal', grantedAt: ts('10-12', '10:00') }],
@@ -148,8 +150,8 @@ const transactions: Transaction[] = [
  * to 10% in v3, which is what the agent graph reacts to. Without the numbers being
  * fields rather than prose, no amount of model calling can compute the cash gap.
  */
-const EQUIP_TERMS: PaymentTerms = { prepayRate: 0.5, instalments: [], settlementDays: 15 }
-const EQUIP_TERMS_REVISED: PaymentTerms = { prepayRate: 0.1, instalments: [], settlementDays: 15 }
+const EQUIP_TERMS: PaymentTerms = { prepayRate: 0.5, instalments: [], settlementDays: 15, payerOrgId: ORG_B, acceptanceDate: '2026-12-05', verifiedClausesFingerprint: clausesFingerprint(V3_CLAUSES) }
+const EQUIP_TERMS_REVISED: PaymentTerms = { prepayRate: 0.1, instalments: [], settlementDays: 15, payerOrgId: ORG_B, acceptanceDate: '2026-12-05', verifiedClausesFingerprint: clausesFingerprint(V3_CLAUSES) }
 
 const contracts: Contract[] = [
   {
@@ -237,11 +239,11 @@ const cm = (
 ): Comment => ({ id, contractId: 'ct_equip', clauseId, parentId, authorId, orgId, body, visibility, createdAt })
 
 const comments: Comment[] = [
-  cm('cm_1', 'cl_e3', 'u_b_biz', ORG_B, 'shared', '30 日内交付对我们的产线排期比较紧，因为核心传感器需要提前备货。能否放宽到 45 日？', ts('10-10', '10:20')),
-  cm('cm_2', 'cl_e3', 'u_a_biz', ORG_A, 'shared', '理解。只要首批 10 台能在 30 日内到货，我们可以接受整体 45 日。请先提交修改建议。', ts('10-10', '14:05'), 'cm_1'),
+  cm('cm_1', 'cl_e3', 'u_b_biz', ORG_B, 'shared', '考虑到供方提出的传感器备货周期，需方可以讨论放宽至 45 日，但请保证首批交付。', ts('10-10', '10:20')),
+  cm('cm_2', 'cl_e3', 'u_a_biz', ORG_A, 'shared', '供方会优先安排首批 10 台，并接受对整体 45 日交付方案的修改建议。', ts('10-10', '14:05'), 'cm_1'),
   cm('cm_3', 'cl_e5', 'u_a_legal', ORG_A, 'internal', '【内部】违约金上限 10% 是我方底线，建议不要让步；如果对方坚持，可以用延长付款账期作交换。', ts('10-11', '09:40')),
   cm('cm_4', 'cl_e5', 'u_a_counsel', ORG_A, 'counsel', '【律师意见】万分之五的日违约金折算年化约 18%，在司法实践中通常可被支持，但超过实际损失 30% 时存在被调减的风险。建议保留 10% 总额上限，并增加“以实际损失为限”的表述。', ts('10-13', '11:15')),
-  cm('cm_5', 'cl_e4', 'u_b_legal', ORG_B, 'internal', '【内部】质保 12 个月是行业常规，但我们的核心部件供应商只给 9 个月质保，存在 3 个月缺口。商务谈判时可以主张 6 个月，底线 9 个月。', ts('10-11', '16:30')),
+  cm('cm_5', 'cl_e4', 'u_b_legal', ORG_B, 'internal', '【内部】请核实供方核心部件供应商的质保与整机质保是否一致，避免后续履约争议。', ts('10-11', '16:30')),
   cm('cm_6', 'cl_e2', 'u_b_legal', ORG_B, 'shared', '付款条款没有问题，请确认发票开具时点是否与验收时间一致。', ts('10-09', '09:30')),
   cm('cm_7', 'cl_e2', 'u_a_legal', ORG_A, 'shared', '已在第二版中补充：发票应在付款前开具。', ts('10-09', '10:10'), 'cm_6')
 ]
@@ -310,10 +312,10 @@ const ms = (
 ): Milestone => ({ id, transactionId: 'tx_equip', name, responsibleOrgId, dueDate, status, note, paymentAmount, createdBy: 'u_a_biz', createdAt: ts('10-12', '09:00') })
 
 const milestones: Milestone[] = [
-  ms('ms_1', '支付 30% 预付款', ORG_A, '2026-10-22', 'in_progress', '合同签订后 5 个工作日内支付，财务已发起付款申请。', 384_000),
-  ms('ms_2', '交付第一批设备（10 台）', ORG_B, '2026-11-20', 'pending', '首批设备运至华东仓储中心。'),
-  ms('ms_3', '完成验收', ORG_A, '2026-12-05', 'pending', '收货后 7 日内完成验收。'),
-  ms('ms_4', '支付剩余 70% 款项', ORG_A, '2026-12-20', 'pending', '验收合格后 10 个工作日内支付，需先收到增值税专用发票。', 896_000)
+  ms('ms_1', '支付 10% 预付款', ORG_B, '2026-11-05', 'in_progress', '拟定付款安排，尚未核对到账。', 128_000),
+  ms('ms_2', '交付第一批设备（10 台）', ORG_A, '2026-11-20', 'pending', '首批设备运至华东仓储中心。'),
+  ms('ms_3', '完成验收', ORG_B, '2026-12-05', 'pending', '收货后 7 日内完成验收。'),
+  ms('ms_4', '支付剩余 90% 款项', ORG_B, '2026-12-20', 'pending', '预计验收后 15 日支付，需先核对发票资料。', 1_152_000)
 ]
 
 const act = (
@@ -419,11 +421,11 @@ const claims: Claim[] = [
     transactionId: 'tx_equip',
     key: 'cash.gap',
     label: '预计资金缺口',
-    value: '¥342,000',
-    numeric: 342_000,
+    value: '¥438,000',
+    numeric: 438_000,
     unit: 'CNY',
     status: 'inferred',
-    source: { kind: 'agent', ref: 'finance', detail: '按传感器备货款 11-10 到期、可动用现金 ¥150,000 测算' },
+    source: { kind: 'agent', ref: 'finance', detail: '按 11-10 备货款、12-01 人工成本、12-20 尾款与现金余额测算' },
     asOf: ts('10-16', '09:40'),
     visibility: 'internal',
     supersededById: null,
@@ -472,10 +474,10 @@ const proposals: Proposal[] = [
     transactionId: 'tx_equip',
     contractId: 'ct_equip',
     orgId: ORG_A,
-    title: '预付款由 50% 降至 10%，11 月 10 日前存在 ¥342,000 资金缺口',
+    title: '预付款由 50% 降至 10%，12 月 1 日存在 ¥438,000 资金缺口',
     rationale: [
       '预付款 ¥128,000，可动用现金 ¥150,000。',
-      '预计在 2026-11-10 出现资金缺口 ¥342,000（最低余额 ¥-342,000）。',
+      '预计在 2026-12-01 出现资金缺口 ¥438,000（最低余额 ¥-438,000）。',
       '本次变更使预付款减少 ¥512,000。',
       '法务：预付款降至 10% 后缺少付款保障，建议补充验收期限与逾期违约责任。',
       '经营：可将备货启动推迟至预付款到账后，或改为按交付批次分阶段收款。'
@@ -516,6 +518,14 @@ export function createSeedDatabase(): Database {
     proposals,
     // No chat history is shipped: an invented conversation would look like real advice.
     conversations: [],
-    chatMessages: []
+    chatMessages: [],
+    analysisRuns: [],
+    tasks: [],
+    counterparties: [],
+    importDrafts: [],
+    internalReviews: [],
+    cashPlans: [],
+    cashEntries: [],
+    invoiceCases: []
   })
 }

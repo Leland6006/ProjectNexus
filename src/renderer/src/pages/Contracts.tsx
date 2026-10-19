@@ -1,10 +1,11 @@
+import { ContractImportButton } from '@/components/BusinessTools'
 import { useMemo, useState } from 'react'
 import { FileText, Search } from 'lucide-react'
 import type { ContractStatus } from '@shared/types'
 import { Card, EmptyState, Input, PageHeader, Select } from '@/components/ui'
 import { ContractStatusBadge } from '@/components/badges'
 import { formatDateTime } from '@/lib/utils'
-import { orgOf } from '@/lib/selectors'
+import { currentUser, orgOf } from '@/lib/selectors'
 import { contractRoute } from '@/routes'
 import { useApp, useView } from '@/store'
 
@@ -28,7 +29,7 @@ export default function ContractsPage() {
 
   return (
     <div className="mx-auto max-w-6xl p-6">
-      <PageHeader title="全部合同" subtitle="你有权查看的全部合同。新合同请在对应业务中创建" />
+      <PageHeader title="全部合同" subtitle="你有权查看的全部合同。可从 DOCX 或文字型 PDF 建立合同草稿" actions={currentUser(s).role !== 'external_counsel' && <ContractImportButton />} />
       <div className="mb-3 flex items-center gap-2">
         <div className="relative w-72">
           <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-ink-400" />

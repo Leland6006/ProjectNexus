@@ -60,9 +60,12 @@ export function rememberable(r: Route): Route {
 }
 
 /** Where an attention item is handled. Structural input so this file stays dependency-free. */
-export function attentionRoute(item: { kind: 'decision' | 'suggestion' | 'milestone'; transactionId: string; contractId: string | null }): Route {
+export function attentionRoute(item: { kind: 'decision' | 'suggestion' | 'milestone' | 'task' | 'review' | 'finance' | 'invoice'; transactionId: string; contractId: string | null }): Route {
+  if (item.kind === 'finance') return { module: 'finance', view: 'receivables' }
+  if (item.kind === 'invoice') return { module: 'finance', view: 'invoices' }
+  if (item.kind === 'task') return { module: 'actions', view: 'executing' }
   if (item.kind === 'decision') return { module: 'actions', view: 'decisions' }
-  if (item.kind === 'suggestion' && item.contractId) return { module: 'business', view: 'contract', contractId: item.contractId }
+  if ((item.kind === 'suggestion' || item.kind === 'review') && item.contractId) return { module: 'business', view: 'contract', contractId: item.contractId }
   return { module: 'business', view: 'project', transactionId: item.transactionId, tab: item.kind === 'milestone' ? 'performance' : 'overview' }
 }
 

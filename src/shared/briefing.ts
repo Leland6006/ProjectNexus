@@ -1,3 +1,6 @@
+import { businessDate, remainingAmount } from './ledger.ts'
+import { reviewFingerprint } from './terms.ts'
+import { isStaleProposal } from './proposalView.ts'
 // "What needs attention" for the acting account, derived only from data it can see.
 //
 // Every item names where it came from. When there is nothing, the list is empty: the
@@ -6,7 +9,7 @@
 import { effectiveOrgId, isPartyMember } from './permissions.ts'
 import type { ViewState } from './types.ts'
 
-export type AttentionKind = 'decision' | 'suggestion' | 'milestone'
+export type AttentionKind = 'decision' | 'suggestion' | 'milestone' | 'task' | 'review' | 'finance' | 'invoice'
 
 export interface AttentionItem {
   id: string
@@ -43,13 +46,23 @@ export function attentionItems(s: ViewState, now: Date, horizonDays = 14): Atten
     items.push({
       id: `decision:${p.id}`,
       kind: 'decision',
-      title: p.title,
+      title: isStaleProposal(s.versions, p) ? `需重新分析：${txName(p.transactionId)}` : p.title,
       detail: txName(p.transactionId),
       source: `AI 建议 · 生成于 ${p.createdAt.slice(0, 10)}`,
       transactionId: p.transactionId,
       contractId: p.contractId,
       urgency: 1,
       at: p.createdAt
+    })
+  }
+
+  for (const task of s.tasks) {
+    if (['completed', 'cancelled'].includes(task.status)) continue
+    const overdue = task.dueDate && daysFrom(task.dueDate, now) < 0
+    if (task.requiresReview || task.status === 'waiting_user' || overdue) items.push({
+      id: `task:${task.id}`, kind: 'task', title: task.requiresReview ? `需核对最新资料：${task.title}` : task.title,
+      detail: txName(task.transactionId), source: `任务 · 更新 ${task.updatedAt.slice(0, 10)}`,
+      transactionId: task.transactionId, contractId: task.contractId, urgency: overdue ? 0 : 2, at: task.updatedAt
     })
   }
 
@@ -91,6 +104,15 @@ export function attentionItems(s: ViewState, now: Date, horizonDays = 14): Atten
     })
   }
 
+  for (const r of s.internalReviews) if (r.status === 'pending' && r.reviewerId === user.id) {
+    const contract = s.contracts.find((c) => c.id === r.contractId)
+    if (!contract || reviewFingerprint(contract, s.versions) !== r.sourceFingerprint) continue
+    items.push({ id: `review:${r.id}`, kind: 'review', title: '一份合同等待你的内部审阅', detail: txName(r.transactionId), source: `内部审阅 · 发起于 ${r.createdAt.slice(0, 10)}`, transactionId: r.transactionId, contractId: r.contractId, urgency: 2, at: r.createdAt })
+  }
+  for (const p of s.cashPlans) if (p.status === 'active' && remainingAmount(p, s.cashEntries) > 0 && p.dueDate <= businessDate(new Date(now.getTime() + horizonDays * DAY))) {
+    items.push({ id: `cashplan:${p.id}`, kind: 'finance', title: `${p.direction === 'in' ? '待收' : '待付'}「${p.title}」¥${remainingAmount(p, s.cashEntries).toLocaleString('zh-CN')}`, detail: p.transactionId ? txName(p.transactionId) : '公司日常事务', source: `人工核对计划 · ${p.dueDate}`, transactionId: p.transactionId ?? '', contractId: null, urgency: p.dueDate < businessDate(now) ? 1 : 3, at: p.dueDate })
+  }
+  for (const i of s.invoiceCases) if (i.stage !== 'recorded') items.push({ id: `invoice:${i.id}`, kind: 'invoice', title: `发票事项「${i.title}」待继续`, detail: txName(i.transactionId), source: '用户材料与办理记录 · 尚未连接税务验证', transactionId: i.transactionId, contractId: null, urgency: 4, at: i.createdAt })
   return items.sort((a, b) => a.urgency - b.urgency || a.at.localeCompare(b.at))
 }
 
