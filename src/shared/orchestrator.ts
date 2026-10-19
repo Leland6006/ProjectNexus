@@ -390,6 +390,7 @@ export function isDuplicateProposal(db: Database, proposal: Proposal): boolean {
 
 export interface ApprovalResult {
   proposal: Proposal
+  /** The evidence the decision cited, in its unchanged state. Never promoted here. */
   claims: Claim[]
   suggestions: Suggestion[]
   activity: Activity
@@ -419,9 +420,12 @@ function authorizeProposal(db: Database, proposalId: string, userId: string, asO
 }
 
 /**
- * Nothing an agent drafts takes effect on its own. Approval also promotes the claims
- * the draft rests on: that is the moment an inference becomes company memory, and only
- * a person can do it.
+ * Nothing an agent drafts takes effect on its own.
+ *
+ * Adopting a plan is NOT confirming its premises. A forecast ("cash gap of ¥342,000")
+ * stays a forecast after the user decides to act on it, and a recommendation stays a
+ * recommendation. Approval therefore leaves every cited claim exactly as it was; the
+ * only way a claim becomes a confirmed fact is an explicit `confirmClaim` on that claim.
  */
 export function approveProposal(args: {
   db: Database
@@ -452,13 +456,8 @@ export function approveProposal(args: {
     throw new NexusError('CONFLICT', '合同已在建议生成后被修改，请重新生成建议')
   }
 
-  const promoted: Claim[] = []
-  for (const c of db.claims) {
-    if (!proposal.claimIds.includes(c.id)) continue
-    if (c.status === 'confirmed') continue
-    Object.assign(c, { status: 'confirmed', confirmedBy: userId, confirmedAt: at, asOf: at })
-    promoted.push(c)
-  }
+  // Evidence is reported back unchanged so callers can show what the decision rested on.
+  const cited: Claim[] = db.claims.filter((c) => proposal.claimIds.includes(c.id))
 
   const suggestions: Suggestion[] = []
   const contract = proposal.contractId ? db.contracts.find((c) => c.id === proposal.contractId) : undefined
@@ -501,7 +500,7 @@ export function approveProposal(args: {
   }
   db.activities.push(activity)
 
-  return { proposal, claims: promoted, suggestions, activity }
+  return { proposal, claims: cited, suggestions, activity }
 }
 
 export function rejectProposal(args: { db: Database; proposalId: string; userId: string; at: string; representingOrgId?: string | null }): Proposal {

@@ -345,6 +345,39 @@ export interface Activity {
   createdAt: string
 }
 
+/**
+ * A private working conversation with Nexus. It belongs to one account acting for one
+ * operating company; nobody else can open it, including colleagues in the same company.
+ * What is said here is discussion only and never becomes company memory by itself.
+ */
+export interface Conversation {
+  id: string
+  ownerUserId: string
+  /** Operating company the conversation belongs to (the owner's organisation). */
+  orgId: string
+  title: string
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * user      : typed by the owner
+ * system    : a status notice written by Nexus itself (for example "AI not connected").
+ *             It reports what happened; it is never advice or analysis.
+ * assistant : a reply produced by a connected runtime. This build has none.
+ */
+export type ChatRole = 'user' | 'system' | 'assistant'
+
+export interface ChatMessage {
+  id: string
+  conversationId: string
+  role: ChatRole
+  body: string
+  /** Runtime that produced a non-user message ('none' when no AI is connected). */
+  runtime: string | null
+  createdAt: string
+}
+
 export interface Database {
   /** Storage schema version; see src/shared/migrations.ts for the upgrade chain. */
   schemaVersion: number
@@ -362,6 +395,14 @@ export interface Database {
   cashAccounts: CashAccount[]
   claims: Claim[]
   proposals: Proposal[]
+  conversations: Conversation[]
+  chatMessages: ChatMessage[]
+}
+
+/** Which conversation runtime is installed in the main process. The UI never guesses. */
+export interface RuntimeStatus {
+  id: string
+  connected: boolean
 }
 
 /** Organisations and accounts, used by the demo directory views. */
@@ -397,6 +438,10 @@ export interface ViewState {
   claims: Claim[]
   /** Agent drafts waiting for a human decision. */
   proposals: Proposal[]
+  /** Only the acting account's own conversations in its own company. */
+  conversations: Conversation[]
+  chatMessages: ChatMessage[]
+  runtime: RuntimeStatus
 }
 
 export type NexusErrorCode =

@@ -6,6 +6,7 @@ import { confirmClaim, mergeClaim } from '../shared/context.ts'
 import { buildViewState, canSeeItem, canViewTransaction, effectiveOrgId } from '../shared/permissions.ts'
 import { NO_LLM, runOrchestrator, approveProposal, rejectProposal, isDuplicateProposal, type LlmClient } from '../shared/orchestrator.ts'
 import { createSeedDatabase, DEFAULT_USER_ID } from '../shared/seed.ts'
+import { NO_RUNTIME, type NexusRuntime, type RuntimeReply } from '../shared/chat.ts'
 import { NexusService, type ActorContext } from '../shared/service.ts'
 import type { ApiMethod, ApiResult } from '../shared/api.ts'
 import { API_METHODS } from '../shared/api.ts'
@@ -91,6 +92,32 @@ export async function runAgentsFor(session: Session, transactionId: string): Pro
   } finally {
     if (runs.get(key) === token) runs.delete(key)
   }
+}
+
+/**
+ * What answers Nexus conversations. Nothing is connected in this build, so every
+ * message gets an honest "not connected" notice. A model API or DeepSeek Harness
+ * adapter would be installed here (see chat.ts NexusRuntime); it still has to go
+ * through NexusService for anything it wants to change.
+ */
+let runtime: NexusRuntime = NO_RUNTIME
+
+export function setRuntime(next: NexusRuntime | null): void {
+  runtime = next ?? NO_RUNTIME
+}
+
+async function replyFor(session: Session, conversationId: string, text: string): Promise<void> {
+  const userId = session.currentUserId
+  let reply: RuntimeReply
+  try {
+    reply = await runtime.reply({ conversationId, userId, text })
+  } catch (err) {
+    console.error('[handlers] runtime failed', err)
+    reply = { role: 'system', body: '连接 AI 时出错，本次没有生成回答。你的消息已保存。', runtime: runtime.id }
+  }
+  // The account changed while waiting: the reply belongs to someone who is no longer here.
+  if (session.currentUserId !== userId) return
+  session.service.recordRuntimeReply(userId, conversationId, reply)
 }
 
 function str(v: unknown): string {
@@ -246,13 +273,27 @@ export async function handleCall(session: Session, method: unknown, args: unknow
       case 'updateMilestone':
         s.updateMilestone(me, str(args[0]), obj(args[1]))
         break
+      case 'startConversation': {
+        const started = s.startConversation(me, str(args[0]))
+        await replyFor(session, started.conversation.id, started.message.body)
+        break
+      }
+      case 'sendChatMessage': {
+        const sent = s.addChatMessage(me, str(args[0]), str(args[1]))
+        await replyFor(session, sent.conversationId, sent.body)
+        break
+      }
+      case 'renameConversation':
+        s.renameConversation(me, str(args[0]), str(args[1]))
+        break
     }
     return {
       ok: true,
       state: buildViewState(s.db, session.currentUserId, {
         representingOrgId: session.actor.representingOrgId,
         // Local demo only: hand the renderer every account so it can switch between them.
-        demoDirectory: true
+        demoDirectory: true,
+        runtime: { id: runtime.id, connected: runtime.connected }
       })
     }
   } catch (err) {

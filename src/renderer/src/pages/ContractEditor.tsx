@@ -13,6 +13,7 @@ import { SuggestionsPanel } from '@/components/contract/SuggestionsPanel'
 import { Badge, Button, EmptyState } from '@/components/ui'
 import { cn, formatDateTime } from '@/lib/utils'
 import { accessFor, orgOf } from '@/lib/selectors'
+import { projectRoute } from '@/routes'
 import { useApp, useView } from '@/store'
 
 type RightTab = 'comments' | 'suggestions' | 'activity' | 'ai'
@@ -38,6 +39,7 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
   const busy = useApp((x) => x.busy)
   const navigate = useApp((x) => x.navigate)
   const toast = useApp((x) => x.toast)
+  const setLeaveGuard = useApp((x) => x.setLeaveGuard)
 
   const contract = s.contracts.find((c) => c.id === contractId)
   const tx = contract && s.transactions.find((t) => t.id === contract.transactionId)
@@ -68,10 +70,17 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
     return () => window.removeEventListener('beforeunload', h)
   }, [dirty])
 
+  // In-app navigation away from unsaved edits asks first.
+  useEffect(() => {
+    if (!dirty) return
+    setLeaveGuard(() => window.confirm('有未保存的修改，确定离开吗？'))
+    return () => setLeaveGuard(null)
+  }, [dirty, setLeaveGuard])
+
   if (!contract || !tx) {
     return (
       <div className="p-6">
-        <EmptyState title="合同不存在或无权访问" action={<Button onClick={() => navigate({ page: 'contracts' })}>返回合同中心</Button>} />
+        <EmptyState title="合同不存在或无权访问" action={<Button onClick={() => navigate({ module: 'business', view: 'contracts' })}>返回全部合同</Button>} />
       </div>
     )
   }
@@ -96,16 +105,15 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
     return ok
   }
 
-  const goBack = (): void => {
-    if (dirty && !window.confirm('有未保存的修改，确定离开吗？')) return
-    navigate({ page: 'transactions', transactionId: tx.id })
-  }
+  // Unsaved edits are guarded centrally (see the leave guard above), so every way out of
+  // the editor — this button, the sidebar, module switches, account switches — asks once.
+  const goBack = (): void => navigate(projectRoute(tx.id))
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-2.5">
         <div className="flex items-center gap-3">
-          <button onClick={goBack} aria-label="返回交易项目" className="rounded p-1 text-ink-500 hover:bg-slate-100">
+          <button onClick={goBack} aria-label="返回业务项目" className="rounded p-1 text-ink-500 hover:bg-slate-100">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div>
@@ -171,7 +179,7 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[240px_minmax(0,1fr)_360px]">
+      <div className="grid min-h-0 flex-1 grid-cols-[208px_minmax(0,1fr)_320px] xl:grid-cols-[240px_minmax(0,1fr)_360px]">
         <ClauseOutline
           contractId={contract.id}
           clauses={draft}

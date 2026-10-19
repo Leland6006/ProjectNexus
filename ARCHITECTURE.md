@@ -30,6 +30,9 @@ Renderer (React)  --window.nexus.call(method, ...args)-->  Preload  --IPC 'nexus
 | `src/shared/sanitize.ts` | 合同 HTML 清理（标签白名单 + 丢弃全部属性） |
 | `src/shared/migrations.ts` | 存储 schema 版本与升级链 |
 | `src/shared/editorRules.ts` | 编辑器规则（可见范围选项、确认最终版条件、版本排序） |
+| `src/shared/chat.ts` | Nexus 会话的长度限制、标题与搜索、`NexusRuntime` 运行适配边界 |
+| `src/shared/briefing.ts` | “需要关注 / 今日经营”：只从可见数据生成、每项带来源 |
+| `src/renderer/src/routes.ts` | 类型化路由（模块 → 对象 → 工作内容）与身份变化后的路由校正，无依赖、可测试 |
 | `src/shared/templates.ts` `seed.ts` | 虚构模板与演示数据 |
 | `src/main/` | 窗口、IPC、`JsonStore` |
 | `src/preload/index.ts` | 单一桥接函数 |
@@ -37,7 +40,8 @@ Renderer (React)  --window.nexus.call(method, ...args)-->  Preload  --IPC 'nexus
 
 ## 数据模型
 
-Organization、User、Transaction、Contract、ContractVersion、Comment、Suggestion、Message、Milestone、Activity。
+Organization、User、Transaction、Contract、ContractVersion、Comment、Suggestion、Message、Milestone、Activity；
+协同分析另有 Claim、Proposal、CostItem、CashAccount；第一轮新增 Conversation、ChatMessage（schema v3）。
 `Transaction` 是根对象：合同、消息、履约节点、活动都通过 `transactionId` 归属于交易。
 `Contract.clauses` 是工作草稿；`ContractVersion` 是不可变快照；`Suggestion` 记录提议时的原文，接受时若条款已变则拒绝（防止覆盖）。
 
@@ -74,7 +78,8 @@ Organization、User、Transaction、Contract、ContractVersion、Comment、Sugge
 | `src/shared/context.ts` | Claim（企业记忆单元）、Agent 上下文分发、事实晋升规则 |
 | `src/shared/orchestrator.ts` | 确定性 DAG + 三个标注的模型节点 + 人工确认闭环 |
 | `src/shared/proposalView.ts` | 建议中心的展示规则（陈旧判定、证据排序、状态文案） |
-| `src/renderer/src/pages/Proposals.tsx` | 待确认建议中心与企业记忆面板 |
+| `src/renderer/src/pages/Proposals.tsx` | 待我决策 / 已处理（方案卡与依据） |
+| `src/renderer/src/pages/Memory.tsx` | 公司档案与记忆（已确认 / 待核实 / 历史记录） |
 
 两条硬性规则：
 
@@ -85,16 +90,40 @@ Organization、User、Transaction、Contract、ContractVersion、Comment、Sugge
 
 ### 人工确认闭环
 
-界面上的「AI 建议中心」是这条闭环的落点，规则同样写在 `src/shared` 里，因此可测：
+界面上的「行动与决策 → 待我决策」和「公司档案与记忆」是这条闭环的落点，规则同样写在 `src/shared` 里，因此可测：
 
 - 每条建议列出它引用的 Claim，并按 `confirmed → inferred → recommended` 排序展示，状态徽章不同。
 - 单条推断可以单独点「确认」晋升为事实（`confirmClaim` IPC），前提是它本来就在该用户的可见范围内——确认操作不能扩大可读范围。
-- 建议「采纳」时，把它引用的推断一并晋升为已确认事实，并写入活动记录；「忽略」只标记状态。
+- 建议「采纳」只记录决策、生成合同修改建议并写入活动记录，**不改变**它引用的任何 Claim：采纳一个方案不等于确认预测已经发生，建议也仍是建议。推断只能通过「确认」逐条晋升为事实。「忽略」只标记状态。
 - 陈旧建议（`isStaleProposal`）显示为失效并禁用采纳按钮，必须先重新分析；缺失依据同样禁用采纳，服务端在任何修改前校验全部依据，拒绝被替代的 Claim。
 - 综合分析和建议处理仅限所属企业成员；外部律师继续参与合同协作，但不能读取或生成包含内部财务信息的综合建议。
 - 分析使用开始时的数据快照及可见版本、成本与现金账户；异步返回后若源数据或当前身份变化，则拒绝写回。同一会话重叠运行时只有最新运行可以写回。
 - Claim 合并后按实际保留的 ID 重建建议引用，审批与忽略成功后都会触发持久化。
 - 重复运行同一份条款不会产生第二条相同建议（`isDuplicateProposal`），只更新已有结论。
+
+## 界面与路由（第一轮）
+
+从左到右：一级模块导航 → 可折叠二级侧栏 → 主内容区。`Route` 是带判别字段的联合类型（`module` + `view` + 对象 id），
+所有跳转都经过 `navigate`：
+
+- 每个模块记住上次的页面，切回时恢复；一次性的标记（如“打开新建对话框”）不会被记住。
+- 切换账号或重置演示数据时，路由、各模块记录和离开保护全部清空，回到 Nexus 首页。
+- 同一账号下数据变化后，`reconcileRoute` 把指向已不可见对象的路由退回模块默认页。
+- 合同编辑器有未保存修改时，任何离开方式（返回、侧栏、切换模块或账号）都会先确认。
+- 进入合同编辑器时自动收起二级侧栏，离开后恢复原来的状态。
+- “当前经营企业”在侧栏底部和顶栏显示；“交易对象”只是业务的分组条件，每笔业务的合同、磋商与收付款各自独立。
+
+## Nexus 对话与运行适配边界
+
+- `Conversation` 归属一个账号和它所在的经营企业。`buildViewState` 只返回本人、本企业的会话，同企业的同事也看不到；
+  访问他人会话一律返回“不存在”。
+- 会话在发送第一条消息时才创建，不保存空草稿；演示数据不预置任何聊天记录。
+- 聊天服务方法只写 `conversations` 和 `chatMessages`，**不会**写入 Claim 或其他业务数据。
+- 主进程持有一个 `NexusRuntime`（`src/shared/chat.ts`）。本版本是 `NO_RUNTIME`：每条消息只得到一条 `system` 状态说明
+  “尚未连接 AI”，不会生成 `assistant` 回复。运行时出错时同样写入状态说明。
+- 回复异步返回时如果当前账号已切换，丢弃回复，不写入。
+- 后续接入模型 API 或 DeepSeek Harness 时，只替换 `setRuntime(...)` 注入的对象；运行时想修改任何业务数据，
+  仍必须通过 `NexusService` 的权限与输入校验，不能只依赖提示词。
 
 ## 未来云端架构
 

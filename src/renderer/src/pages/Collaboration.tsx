@@ -1,74 +1,107 @@
 import { useMemo, useState } from 'react'
-import { Card, CardHeader, EmptyState, PageHeader, Select } from '@/components/ui'
+import { Send } from 'lucide-react'
+import { Button, Card, CardHeader, EmptyState, Select, Textarea } from '@/components/ui'
 import { VisibilityBadge } from '@/components/badges'
 import { formatDateTime } from '@/lib/utils'
-import { userLabel } from '@/lib/selectors'
+import { accessFor, userLabel } from '@/lib/selectors'
+import { contractRoute } from '@/routes'
 import { useApp, useView } from '@/store'
 
-export default function Collaboration() {
+function ProjectMessages({ transactionId }: { transactionId: string }) {
   const s = useView()
-  const navigate = useApp((x) => x.navigate)
-  const [txId, setTxId] = useState('all')
+  const act = useApp((x) => x.act)
+  const busy = useApp((x) => x.busy)
+  const [msg, setMsg] = useState('')
+  const [vis, setVis] = useState<'shared' | 'internal'>('shared')
+  const tx = s.transactions.find((t) => t.id === transactionId)!
+  const a = accessFor(s, tx)
+  const messages = s.messages.filter((m) => m.transactionId === transactionId).sort((x, y) => x.createdAt.localeCompare(y.createdAt))
 
-  const items = useMemo(() => {
-    const acts = s.activities
-      .filter((a) => txId === 'all' || a.transactionId === txId)
-      .map((a) => ({ kind: 'activity' as const, id: a.id, at: a.createdAt, txId: a.transactionId, contractId: a.contractId, actor: a.actorId, text: a.summary, visibility: a.visibility }))
-    const msgs = s.messages
-      .filter((m) => txId === 'all' || m.transactionId === txId)
-      .map((m) => ({ kind: 'message' as const, id: m.id, at: m.createdAt, txId: m.transactionId, contractId: null as string | null, actor: m.authorId, text: m.body, visibility: m.visibility as 'shared' | 'internal' | 'counsel' }))
-    return [...acts, ...msgs].sort((a, b) => b.at.localeCompare(a.at))
-  }, [s, txId])
+  const send = async (): Promise<void> => {
+    if (!msg.trim()) return
+    if (await act('sendMessage', [transactionId, msg, vis])) setMsg('')
+  }
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <PageHeader
-        title="协作与消息"
-        subtitle="项目消息、条款评论与协商活动的统一时间线"
-        actions={
-          <Select className="w-56" value={txId} onChange={(e) => setTxId(e.target.value)} aria-label="按交易筛选">
-            <option value="all">全部交易</option>
-            {s.transactions.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
+    <Card>
+      <CardHeader title="项目消息" subtitle="「仅本企业」消息对方不可见" />
+      <div className="max-h-[26rem] space-y-3 overflow-y-auto px-4 py-3">
+        {messages.length === 0 && <p className="py-4 text-center text-xs text-ink-500">暂无消息</p>}
+        {messages.map((m) => (
+          <div key={m.id} className="rounded-lg bg-slate-50 px-3 py-2">
+            <div className="mb-0.5 flex flex-wrap items-center gap-2 text-xs text-ink-500">
+              <span className="font-medium text-ink-700">{userLabel(s, m.authorId)}</span>
+              <span>{formatDateTime(m.createdAt)}</span>
+              <VisibilityBadge visibility={m.visibility} />
+            </div>
+            <p className="whitespace-pre-wrap text-sm text-ink-900">{m.body}</p>
+          </div>
+        ))}
+      </div>
+      {a.isCounsel ? (
+        <p className="border-t border-slate-100 px-4 py-3 text-xs text-ink-500">外部律师请在合同条款上添加意见。</p>
+      ) : (
+        <div className="flex items-end gap-2 border-t border-slate-100 p-3">
+          <Textarea className="min-h-[40px] flex-1" rows={2} value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="输入消息…" aria-label="消息内容" />
+          <Select className="w-28" value={vis} onChange={(e) => setVis(e.target.value as typeof vis)} aria-label="消息可见范围">
+            <option value="shared">双方可见</option>
+            <option value="internal">仅本企业</option>
           </Select>
-        }
-      />
-      <Card>
-        <CardHeader title="时间线" subtitle="仅显示你有权查看的内容；对方的内部讨论不会出现在这里" />
-        {items.length === 0 ? (
-          <EmptyState title="暂无记录" />
-        ) : (
-          <ol className="relative ml-6 space-y-4 border-l border-slate-200 py-4 pr-4">
-            {items.map((it) => {
-              const tx = s.transactions.find((t) => t.id === it.txId)
-              return (
-                <li key={`${it.kind}-${it.id}`} className="relative pl-5">
-                  <span className={`absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white ${it.kind === 'message' ? 'bg-emerald-500' : 'bg-brand-500'}`} />
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-ink-500">
-                    <span className="font-medium text-ink-700">{it.kind === 'message' ? `${userLabel(s, it.actor)} 发送消息` : '活动'}</span>
-                    <span>{formatDateTime(it.at)}</span>
-                    <VisibilityBadge visibility={it.visibility} />
-                  </div>
-                  <p className="mt-0.5 text-sm text-ink-900">{it.text}</p>
-                  <div className="mt-0.5 flex gap-3 text-xs">
-                    <button className="text-ink-500 hover:text-brand-700" onClick={() => navigate({ page: 'transactions', transactionId: it.txId })}>
-                      {tx?.name}
-                    </button>
-                    {it.contractId && (
-                      <button className="text-brand-600 hover:underline" onClick={() => navigate({ page: 'contracts', contractId: it.contractId! })}>
-                        查看合同
-                      </button>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ol>
-        )}
-      </Card>
+          <Button variant="primary" onClick={() => void send()} loading={busy} disabled={!msg.trim()}>
+            <Send className="h-3.5 w-3.5" />
+            发送
+          </Button>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function NegotiationTimeline({ transactionId }: { transactionId: string }) {
+  const s = useView()
+  const navigate = useApp((x) => x.navigate)
+  const items = useMemo(
+    () => s.activities.filter((a) => a.transactionId === transactionId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [s.activities, transactionId]
+  )
+  return (
+    <Card>
+      <CardHeader title="协商记录" subtitle="谁修改了合同、谁提出意见、何时产生新版本" />
+      {items.length === 0 ? (
+        <EmptyState title="暂无记录" />
+      ) : (
+        <ol className="relative ml-6 max-h-[32rem] space-y-4 overflow-y-auto border-l border-slate-200 py-4 pr-4">
+          {items.map((it) => (
+            <li key={it.id} className="relative pl-5">
+              <span className="absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand-500" />
+              <div className="flex flex-wrap items-center gap-2 text-xs text-ink-500">
+                <span>{formatDateTime(it.createdAt)}</span>
+                <VisibilityBadge visibility={it.visibility} />
+              </div>
+              <p className="mt-0.5 text-sm text-ink-900">{it.summary}</p>
+              {it.contractId && s.contracts.some((c) => c.id === it.contractId) && (
+                <button className="mt-0.5 text-xs text-brand-700 hover:underline" onClick={() => navigate(contractRoute(it.contractId!))}>
+                  查看合同
+                </button>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
+  )
+}
+
+/** Collaboration and negotiation of one business: project messages plus the negotiation trail. */
+export default function Collaboration({ transactionId }: { transactionId: string }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+      <div className="xl:col-span-3">
+        <ProjectMessages transactionId={transactionId} />
+      </div>
+      <div className="xl:col-span-2">
+        <NegotiationTimeline transactionId={transactionId} />
+      </div>
     </div>
   )
 }

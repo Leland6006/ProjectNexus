@@ -11,7 +11,7 @@
 import type { Database } from './types.ts'
 
 /** Bump this whenever `Database` changes shape, and add the matching step below. */
-export const CURRENT_SCHEMA_VERSION = 2
+export const CURRENT_SCHEMA_VERSION = 3
 
 /**
  * Files written before versioning existed carry no `schemaVersion`. They are treated as
@@ -55,6 +55,16 @@ export const MIGRATIONS: MigrationStep[] = [
       for (const v of db.versions) if (loose(v).paymentTerms === undefined) loose(v).paymentTerms = null
       db.schemaVersion = 2
     }
+  },
+  {
+    // Round 1 framework: private Nexus conversations. Existing data is untouched.
+    from: 2,
+    to: 3,
+    up: (db) => {
+      db.conversations ??= []
+      db.chatMessages ??= []
+      db.schemaVersion = 3
+    }
   }
 ]
 
@@ -76,6 +86,9 @@ export function looksLikeDatabase(value: unknown): value is Database {
   ]
   if (typeof db.schemaVersion === 'number' && db.schemaVersion >= 2) {
     arrays.push('proposals', 'claims', 'costItems', 'cashAccounts')
+  }
+  if (typeof db.schemaVersion === 'number' && db.schemaVersion >= 3) {
+    arrays.push('conversations', 'chatMessages')
   }
   return arrays.every((k) => Array.isArray(db[k]))
 }

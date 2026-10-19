@@ -59,6 +59,27 @@ export function otherPartyId(tx: Transaction, myOrgId: string | null): string {
   return myOrgId === tx.initiatorOrgId ? tx.counterpartyOrgId : tx.initiatorOrgId
 }
 
+export interface CounterpartyGroup {
+  orgId: string
+  name: string
+  transactions: Transaction[]
+}
+
+/**
+ * Visible businesses grouped by the organisation on the other side. The counterparty is
+ * only a grouping key: each business keeps its own contracts, messages and payments.
+ */
+export function counterpartyGroups(s: ViewState): CounterpartyGroup[] {
+  const groups = new Map<string, CounterpartyGroup>()
+  for (const t of s.transactions) {
+    const other = otherPartyId(t, accessFor(s, t).orgId)
+    const g = groups.get(other) ?? { orgId: other, name: orgOf(s, other)?.name ?? '未知企业', transactions: [] }
+    g.transactions.push(t)
+    groups.set(other, g)
+  }
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+}
+
 /**
  * Organisations that granted the current external counsel access, across every
  * transaction they can see. More than one means the counsel has to pick a side.

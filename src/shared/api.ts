@@ -28,7 +28,10 @@ export const API_METHODS = [
   'resolveSuggestion',
   'sendMessage',
   'createMilestone',
-  'updateMilestone'
+  'updateMilestone',
+  'startConversation',
+  'sendChatMessage',
+  'renameConversation'
 ] as const
 
 export type ApiMethod = (typeof API_METHODS)[number]

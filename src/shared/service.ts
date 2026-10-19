@@ -5,10 +5,14 @@
 import { canViewContract, canViewTransaction, effectiveOrgId, isOwnerMember, isPartyMember } from './permissions.ts'
 import { sanitizeHtml } from './sanitize.ts'
 import { TEMPLATES } from './templates.ts'
+import { CHAT_MESSAGE_MAX, CHAT_TITLE_MAX, conversationTitle, type RuntimeReply } from './chat.ts'
 import {
   NexusError,
   type Activity,
   type ActivityType,
+  type ChatMessage,
+  type ChatRole,
+  type Conversation,
   type Clause,
   type Comment,
   type Contract,
@@ -665,5 +669,72 @@ export class NexusService {
     this.log(actor, orgId, tx.id, null, 'milestone_updated', `${actor.name} 更新了履约节点「${m.name}」`, 'shared')
     this.commit()
     return m
+  }
+
+  // ---------- Nexus conversations ----------
+  // Private to the account and the company it acts for. Nothing said here becomes a
+  // company fact: these methods only ever touch conversations and chatMessages.
+
+  private conversation(actor: User, id: string): Conversation {
+    const c = this.db.conversations.find((x) => x.id === id)
+    // Someone else's conversation is reported as missing, never as forbidden.
+    if (!c || c.ownerUserId !== actor.id || c.orgId !== actor.orgId) {
+      throw new NexusError('NOT_FOUND', '会话不存在或无权访问')
+    }
+    return c
+  }
+
+  private pushChat(c: Conversation, role: ChatRole, body: string, runtime: string | null): ChatMessage {
+    const now = this.clock.now()
+    const m: ChatMessage = { id: uid('chat'), conversationId: c.id, role, body, runtime, createdAt: now }
+    this.db.chatMessages.push(m)
+    c.updatedAt = now
+    return m
+  }
+
+  /** A conversation is only stored once it has a first message; empty drafts are not kept. */
+  startConversation(actorId: string, firstMessage: string): { conversation: Conversation; message: ChatMessage } {
+    const actor = this.user(actorId)
+    const body = requireText(firstMessage, '消息内容', CHAT_MESSAGE_MAX)
+    const now = this.clock.now()
+    const conversation: Conversation = {
+      id: uid('cv'),
+      ownerUserId: actor.id,
+      orgId: actor.orgId,
+      title: conversationTitle(body),
+      createdAt: now,
+      updatedAt: now
+    }
+    this.db.conversations.push(conversation)
+    const message = this.pushChat(conversation, 'user', body, null)
+    this.commit()
+    return { conversation, message }
+  }
+
+  addChatMessage(actorId: string, conversationId: string, text: string): ChatMessage {
+    const actor = this.user(actorId)
+    const c = this.conversation(actor, conversationId)
+    const m = this.pushChat(c, 'user', requireText(text, '消息内容', CHAT_MESSAGE_MAX), null)
+    this.commit()
+    return m
+  }
+
+  /** Store what the runtime returned. Only the owner's own conversation can receive it. */
+  recordRuntimeReply(actorId: string, conversationId: string, reply: RuntimeReply): ChatMessage {
+    const actor = this.user(actorId)
+    const c = this.conversation(actor, conversationId)
+    if (reply.role !== 'system' && reply.role !== 'assistant') throw new NexusError('INVALID_INPUT', '回复类型无效')
+    const m = this.pushChat(c, reply.role, String(reply.body ?? '').slice(0, 20_000), String(reply.runtime ?? 'unknown').slice(0, 40))
+    this.commit()
+    return m
+  }
+
+  renameConversation(actorId: string, conversationId: string, title: string): Conversation {
+    const actor = this.user(actorId)
+    const c = this.conversation(actor, conversationId)
+    c.title = requireText(title, '会话名称', CHAT_TITLE_MAX)
+    c.updatedAt = this.clock.now()
+    this.commit()
+    return c
   }
 }

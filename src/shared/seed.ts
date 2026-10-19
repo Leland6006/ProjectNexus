@@ -513,6 +513,9 @@ export function createSeedDatabase(): Database {
     costItems,
     cashAccounts,
     claims,
-    proposals
+    proposals,
+    // No chat history is shipped: an invented conversation would look like real advice.
+    conversations: [],
+    chatMessages: []
   })
 }

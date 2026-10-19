@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, Check, Database, Play, ShieldCheck, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Check, Play, ShieldCheck, Sparkles, X } from 'lucide-react'
 import {
   AGENT_LABEL,
   ACTION_KIND_LABEL,
@@ -11,9 +11,7 @@ import {
   claimValue,
   claimsForProposal,
   isStaleProposal,
-  sortClaimsByStatus,
-  sortForReview,
-  unconfirmedClaims
+  sortForReview
 } from '@shared/proposalView'
 import { canPromote } from '@shared/context'
 import type { Claim } from '@shared/types'
@@ -23,7 +21,10 @@ import { runAgentAnalysis } from '@/lib/agents'
 import { accessFor, orgOf } from '@/lib/selectors'
 import { useApp, useView } from '@/store'
 
-function ClaimRow({ claim, dense }: { claim: Claim; dense?: boolean }) {
+// NOTE: tests/contextReview.test.ts executes this page with stubbed modules. Keep its
+// imports to the modules stubbed there (or real packages) so the test keeps running.
+
+export function ClaimRow({ claim, dense }: { claim: Claim; dense?: boolean }) {
   const act = useApp((x) => x.act)
   const busy = useApp((x) => x.busy)
   const canConfirm = canPromote(claim)
@@ -37,7 +38,7 @@ function ClaimRow({ claim, dense }: { claim: Claim; dense?: boolean }) {
         <p className="mt-0.5 text-xs text-ink-400">
           {claimAuthorLabel(claim)}
           {claim.source.detail && ` · ${claim.source.detail}`} · 更新于 {formatDateTime(claim.asOf)}
-          {claim.supersededById && ' · 已被更新的推断取代'}
+          {claim.supersededById && ' · 已被更新的结果取代'}
         </p>
       </div>
       {canConfirm && (
@@ -62,10 +63,8 @@ function ProposalCard({ id }: { id: string }) {
   const author = p.createdBy.startsWith('agent:') ? AGENT_LABEL[p.createdBy.slice(6) as keyof typeof AGENT_LABEL] ?? 'Nexus Agent' : '人工起草'
 
   const decide = async (approve: boolean): Promise<void> => {
-    const ok = approve
-      ? await act('approveProposal', [p.id], '已采纳建议，相关推断已升级为已确认事实')
-      : await act('rejectProposal', [p.id], '已忽略该建议')
-    if (ok && approve) useApp.getState().toast('info', '建议已采纳，依据信息已写入企业记忆')
+    if (approve) await act('approveProposal', [p.id], '已采纳方案。依据中的推断和建议保持原状态，需要时请逐条确认。')
+    else await act('rejectProposal', [p.id], '已忽略该建议')
   }
 
   return (
@@ -77,12 +76,12 @@ function ProposalCard({ id }: { id: string }) {
             <span className="text-sm font-semibold text-ink-900">{p.title}</span>
           </div>
           <p className="mt-1 text-xs text-ink-500">
-            {tx ? tx.name : '交易项目'} · {author} · {formatDateTime(p.createdAt)}
+            {tx ? tx.name : '业务项目'} · {author} · {formatDateTime(p.createdAt)}
           </p>
         </div>
         {tx && (
-          <Button size="sm" onClick={() => navigate({ page: 'transactions', transactionId: tx.id })}>
-            查看交易
+          <Button size="sm" onClick={() => navigate({ module: 'business', view: 'project', transactionId: tx.id, tab: 'overview' })}>
+            查看业务
           </Button>
         )}
       </div>
@@ -126,7 +125,7 @@ function ProposalCard({ id }: { id: string }) {
 
         {found.length > 0 && (
           <div>
-            <p className="mb-1.5 text-xs font-medium text-ink-500">依据（事实、推断与建议分开保存）</p>
+            <p className="mb-1.5 text-xs font-medium text-ink-500">依据（事实、推断与建议分开保存，需逐条确认）</p>
             <ul className="space-y-1.5">
               {found.map((c) => (
                 <ClaimRow key={c.id} claim={c} />
@@ -138,7 +137,7 @@ function ProposalCard({ id }: { id: string }) {
 
       {p.status === 'pending' && (
         <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-4 py-2.5">
-          <span className="mr-auto text-xs text-ink-400">采纳后才会写入合同修改建议与企业记忆</span>
+          <span className="mr-auto text-xs text-ink-400">采纳只记录你的决定并生成合同修改建议；依据中的推断不会因此变成事实</span>
           <Button size="sm" loading={busy} onClick={() => void decide(false)}>
             <X className="h-3.5 w-3.5" />
             忽略
@@ -166,9 +165,9 @@ function RunPanel() {
   if (runnable.length === 0) return null
   return (
     <Card>
-      <CardHeader title="触发一次协同分析" subtitle="用最新合同条款重新跑一遍 Agent 协作" />
+      <CardHeader title="运行一次协同分析" subtitle="用最新合同条款重新分析一笔业务" />
       <div className="space-y-2 px-4 py-3">
-        <Select value={txId} onChange={(e) => setTxId(e.target.value)} aria-label="选择交易项目">
+        <Select value={txId} onChange={(e) => setTxId(e.target.value)} aria-label="选择业务项目">
           {runnable.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}（{orgOf(s, accessFor(s, t).orgId === t.initiatorOrgId ? t.counterpartyOrgId : t.initiatorOrgId)?.shortName}）
@@ -177,91 +176,50 @@ function RunPanel() {
         </Select>
         <Button variant="primary" loading={busy} disabled={!txId} onClick={() => void run()} className="w-full">
           <Play className="h-3.5 w-3.5" />
-          运行 AI 团队分析
+          运行协同分析
         </Button>
-        <p className="text-xs text-ink-500">每笔交易只保留一条待确认建议；重复运行会用最新条款刷新它，不会堆积。</p>
+        <p className="text-xs text-ink-500">未连接模型时只执行确定性的财务测算，法务与经营视角会标为跳过。每笔业务只保留一条待确认建议。</p>
       </div>
     </Card>
   )
 }
 
-function MemoryPanel() {
+export default function Proposals({ mode = 'pending' }: { mode?: 'pending' | 'decided' }) {
   const s = useView()
-  const claims = useMemo(() => sortClaimsByStatus(s.claims), [s.claims])
-  const queue = unconfirmedClaims(s.claims)
-  if (claims.length === 0) return null
-  return (
-    <Card>
-      <CardHeader
-        title="企业记忆"
-        subtitle={`${claims.length} 条 · ${queue.length} 条待人工确认`}
-        action={<Database className="h-4 w-4 text-ink-400" />}
-      />
-      <ul className="max-h-[28rem] space-y-1.5 overflow-y-auto px-4 py-3">
-        {claims.slice(0, 20).map((c) => (
-          <ClaimRow key={c.id} claim={c} dense />
-        ))}
-      </ul>
-    </Card>
-  )
-}
-
-export default function Proposals() {
-  const s = useView()
-  const [tab, setTab] = useState<'pending' | 'decided'>('pending')
   const sorted = useMemo(() => sortForReview(s.proposals), [s.proposals])
-  const pending = sorted.filter((p) => p.status === 'pending')
-  const decided = sorted.filter((p) => p.status !== 'pending')
-  const list = tab === 'pending' ? pending : decided
+  const list = sorted.filter((p) => (mode === 'pending' ? p.status === 'pending' : p.status !== 'pending'))
 
   return (
     <div className="mx-auto max-w-6xl p-6">
       <PageHeader
-        title="AI 建议中心"
-        subtitle="Agent 只在共享的企业上下文里工作；它们写下的东西在你的确认之前不会生效。"
+        title={mode === 'pending' ? '待我决策' : '已处理'}
+        subtitle={mode === 'pending' ? '需要你判断的方案。每条都列出依据，采纳前可以逐条核对。' : '已采纳或已忽略的方案，保留依据以便追溯。'}
         actions={
           <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-ink-500">
             <Sparkles className="h-3.5 w-3.5" />
-            AI 输出仅供参考，需人工确认
+            仅供参考，需人工确认
           </span>
         }
       />
-
-      <div className="mb-4 inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-sm shadow-sm">
-        {(
-          [
-            ['pending', `待确认（${pending.length}）`],
-            ['decided', `已处理（${decided.length}）`]
-          ] as [typeof tab, string][]
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={cn('rounded-md px-3 py-1 transition-colors', tab === key ? 'bg-brand-50 font-medium text-brand-700' : 'text-ink-500 hover:text-ink-900')}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2 space-y-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
           {list.length === 0 ? (
             <Card>
               <EmptyState
                 icon={<Sparkles className="h-8 w-8" />}
-                title={tab === 'pending' ? '暂时没有待确认的建议' : '还没有处理过的建议'}
-                hint="当付款条款等商业条件发生变化时，法务、财务、经营三个视角会自动分析，并把结论汇总成一条待确认的建议放在这里。"
+                title={mode === 'pending' ? '暂时没有待决策的方案' : '还没有处理过的方案'}
+                hint="付款条款等商业条件发生变化时，会生成一条带依据的待确认方案。"
               />
             </Card>
           ) : (
             list.map((p) => <ProposalCard key={p.id} id={p.id} />)
           )}
         </div>
-        <div className="space-y-4">
-          <RunPanel />
-          <MemoryPanel />
-        </div>
+        {mode === 'pending' && (
+          <div className="space-y-4">
+            <RunPanel />
+          </div>
+        )}
       </div>
     </div>
   )

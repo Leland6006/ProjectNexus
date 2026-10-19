@@ -6,6 +6,7 @@ import type {
   Contract,
   Database,
   Organization,
+  RuntimeStatus,
   Transaction,
   User,
   ViewState,
@@ -114,6 +115,8 @@ export interface ViewOptions {
    * them. A server must never set this.
    */
   demoDirectory?: boolean
+  /** Conversation runtime installed in the host. Defaults to "nothing connected". */
+  runtime?: RuntimeStatus
 }
 
 /** Everything a given user is allowed to see. The renderer never receives more than this. */
@@ -200,6 +203,12 @@ export function buildViewState(db: Database, userId: string, opts: ViewOptions =
     return true
   })
 
+  // Conversations are private to the account and to the company it acts for. A colleague
+  // in the same company does not see them, and neither does anybody else.
+  const conversations = db.conversations.filter((c) => c.ownerUserId === user.id && c.orgId === user.orgId)
+  const conversationIds = new Set(conversations.map((c) => c.id))
+  const chatMessages = db.chatMessages.filter((m) => conversationIds.has(m.conversationId))
+
   // Directory: only organisations and people the user legitimately deals with. Sending
   // the whole user table to every client would leak the customer list once this runs on
   // a server. Anyone whose content is visible must stay resolvable, otherwise the UI
@@ -251,6 +260,9 @@ export function buildViewState(db: Database, userId: string, opts: ViewOptions =
     costItems,
     cashAccounts,
     claims,
-    proposals
+    proposals,
+    conversations,
+    chatMessages,
+    runtime: opts.runtime ?? { id: 'none', connected: false }
   }
 }

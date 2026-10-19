@@ -305,7 +305,7 @@ test('inferences are outputs, never premises for another agent', () => {
   assert.deepEqual(excluded.map((c) => c.id), ['cl_2'])
 })
 
-test('approval promotes claims, writes a trail, and refuses a stale draft', async () => {
+test('approval writes a trail, keeps evidence as-is, and refuses a stale draft', async () => {
   const db = scenario()
   const result = await runOrchestrator({
     db,
@@ -340,10 +340,12 @@ test('approval promotes claims, writes a trail, and refuses a stale draft', asyn
   db.claims.push(...fresh.claims)
   db.proposals.push(p2)
 
+  const statusBefore = new Map(db.claims.map((c) => [c.id, c.status]))
   const approved = approveProposal({ db, proposalId: p2.id, userId: DEFAULT_USER_ID, at: '2026-10-18T11:30:00.000Z' })
   assert.equal(approved.proposal.status, 'approved')
   assert.ok(approved.claims.length > 0)
-  assert.ok(approved.claims.every((c) => c.status === 'confirmed'))
+  // Adopting the plan must not have changed the epistemic status of anything it cited.
+  for (const c of db.claims) assert.equal(c.status, statusBefore.get(c.id), `claim ${c.key} changed status on approval`)
   assert.equal(db.activities.filter((a) => a.type === 'proposal_approved').length, 1)
 
   assert.throws(
