@@ -7,7 +7,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import ts from 'typescript'
 import { buildAgentContext, canPromote, confirmClaim, renderContext, selectPremises, visibleClaims } from '../src/shared/context.ts'
-import { looksLikeDatabase, migrateDatabase } from '../src/shared/migrations.ts'
+import { CURRENT_SCHEMA_VERSION, looksLikeDatabase, migrateDatabase } from '../src/shared/migrations.ts'
 import { buildViewState } from '../src/shared/permissions.ts'
 import * as proposalView from '../src/shared/proposalView.ts'
 import { createSeedDatabase, DEFAULT_USER_ID, ORG_A, ORG_B } from '../src/shared/seed.ts'
@@ -112,14 +112,16 @@ test('版本1和无版本数据库仍补齐新集合并保留原始内容', () =
     const raw = db as unknown as Record<string, unknown>
     if (version === undefined) delete raw.schemaVersion
     else db.schemaVersion = version
-    for (const key of V2_ARRAYS) delete raw[key]
+    for (const key of [...V2_ARRAYS, 'conversations', 'chatMessages']) delete raw[key]
     for (const c of [...db.contracts, ...db.versions]) delete (c as Partial<typeof c>).paymentTerms
     const originalName = db.transactions[0].name
     assert.equal(looksLikeDatabase(db), true)
     const result = migrateDatabase(db)
     assert.equal(result.ok, true)
     if (!result.ok) return
-    assert.equal(result.db.schemaVersion, 2)
+    assert.equal(result.db.schemaVersion, CURRENT_SCHEMA_VERSION)
+    assert.deepEqual(result.db.conversations, [])
+    assert.deepEqual(result.db.chatMessages, [])
     assert.equal(result.db.transactions[0].name, originalName)
     for (const key of V2_ARRAYS) assert.deepEqual(result.db[key], [])
     assert.ok([...result.db.contracts, ...result.db.versions].every((c) => c.paymentTerms === null))

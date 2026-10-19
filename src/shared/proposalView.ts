@@ -90,6 +90,7 @@ export function pendingCount(proposals: Proposal[]): number {
  * on a version nobody is looking at any more, so the UI refuses instead of warning.
  */
 export function isStaleProposal(versions: ContractVersion[], proposal: Proposal): boolean {
+  if (proposal.invalidatedReason) return true
   if (!proposal.contractId || !proposal.baseVersionId) return false
   let newest: ContractVersion | null = null
   for (const v of versions) {

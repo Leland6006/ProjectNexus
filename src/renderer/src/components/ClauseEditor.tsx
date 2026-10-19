@@ -34,7 +34,7 @@ export function ClauseEditor({ value, onChange, editable = true }: Props) {
   }, [value, editor])
 
   useEffect(() => {
-    editor?.setEditable(editable)
+    editor?.setEditable(editable, false)
   }, [editable, editor])
 
   if (!editor) return null

@@ -1,3 +1,4 @@
+import { recoverInterruptedRuns } from '../shared/workflows.ts'
 // Local persistence: one JSON file with atomic writes (write temp file, then rename).
 // Deliberately free of Electron imports so it can be unit-tested with plain Node.
 
@@ -47,8 +48,10 @@ export class JsonStore {
       typeof declared === 'string' && migrated.db.users.some((u) => u.id === declared) ? declared : DEFAULT_USER_ID
     const state: PersistedState = { db: migrated.db, currentUserId }
 
+    const recovered = recoverInterruptedRuns(state.db, new Date().toISOString())
+
     // Persist an upgrade immediately so a crash cannot leave the old file in place.
-    if (migrated.fromVersion !== migrated.db.schemaVersion) this.writeNow(state)
+    if (recovered || migrated.fromVersion !== migrated.db.schemaVersion) this.writeNow(state)
     return state
   }
 

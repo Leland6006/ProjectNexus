@@ -123,7 +123,8 @@ test('a delayed analysis cannot write results after source data changes', async 
     if (!result.ok) assert.equal(result.code, 'CONFLICT')
     assert.deepEqual(db.claims, beforeClaims)
     assert.deepEqual(db.proposals, beforeProposals)
-    assert.equal(changes, 0)
+    assert.ok(changes > 0, 'the interrupted run history is now durable')
+    assert.equal(db.analysisRuns.at(-1)?.status, 'stale')
   } finally { setLlmClient(null) }
 })
 
@@ -150,6 +151,7 @@ test('newer analysis wins when two runs overlap', async () => {
   } })
   try {
     const oldRun = handleCall(session, 'runAgents', [transactionId])
+    await new Promise((resolve) => setImmediate(resolve))
     assert.equal((await handleCall(session, 'runAgents', [transactionId])).ok, true)
     release('- 旧分析结果')
     const oldResult = await oldRun

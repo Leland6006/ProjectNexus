@@ -1,16 +1,16 @@
-import { Component, useEffect, type ErrorInfo, type ReactNode } from 'react'
+import { Component, Suspense, lazy, useEffect, type ErrorInfo, type ReactNode } from 'react'
 import { Shell } from './components/Shell'
 import { Spinner, Toasts, Button } from './components/ui'
 import { useApp } from './store'
-import Dashboard from './pages/Dashboard'
-import Proposals from './pages/Proposals'
-import Transactions from './pages/Transactions'
-import TransactionDetail from './pages/TransactionDetail'
+import type { Route } from './routes'
+import NexusPage from './pages/Nexus'
+import ActionsPage from './pages/Actions'
+import BusinessList, { ArchivedBusiness } from './pages/Business'
+import ProjectWorkspace from './pages/Project'
 import ContractsPage from './pages/Contracts'
-import ContractEditor from './pages/ContractEditor'
-import Collaboration from './pages/Collaboration'
-import Performance from './pages/Performance'
-import Organization from './pages/Organization'
+const ContractEditor = lazy(() => import('./pages/ContractEditor'))
+import FinancePage from './pages/Finance'
+import MemoryPage from './pages/Memory'
 import SettingsPage from './pages/Settings'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -35,23 +35,38 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 
+type BusinessRoute = Extract<Route, { module: 'business' }>
+
+function BusinessRouter({ route }: { route: BusinessRoute }) {
+  switch (route.view) {
+    case 'all':
+      return <BusinessList create={route.create} />
+    case 'counterparty':
+      return <BusinessList key={route.orgId} orgId={route.orgId} />
+    case 'archived':
+      return <ArchivedBusiness />
+    case 'contracts':
+      return <ContractsPage />
+    case 'project':
+      return <ProjectWorkspace key={route.transactionId} transactionId={route.transactionId} tab={route.tab} />
+    case 'contract':
+      return <ContractEditor key={route.contractId} contractId={route.contractId} />
+  }
+}
+
 function Router() {
   const route = useApp((s) => s.route)
-  switch (route.page) {
-    case 'dashboard':
-      return <Dashboard />
-    case 'proposals':
-      return <Proposals />
-    case 'transactions':
-      return route.transactionId ? <TransactionDetail transactionId={route.transactionId} /> : <Transactions />
-    case 'contracts':
-      return route.contractId ? <ContractEditor contractId={route.contractId} /> : <ContractsPage />
-    case 'collaboration':
-      return <Collaboration />
-    case 'performance':
-      return <Performance />
-    case 'organization':
-      return <Organization />
+  switch (route.module) {
+    case 'nexus':
+      return <NexusPage key={route.conversationId ?? 'new'} conversationId={route.conversationId} />
+    case 'actions':
+      return <ActionsPage view={route.view} />
+    case 'business':
+      return <BusinessRouter route={route} />
+    case 'finance':
+      return <FinancePage view={route.view} />
+    case 'memory':
+      return <MemoryPage view={route.view} />
     case 'settings':
       return <SettingsPage />
   }
@@ -69,7 +84,7 @@ export default function App() {
   if (loading || !state) {
     return (
       <div className="h-full">
-        <Spinner label="正在加载 Project Nexus" />
+        <Spinner label="正在加载 Nexus" />
       </div>
     )
   }
@@ -78,7 +93,7 @@ export default function App() {
     <>
       <Shell>
         <ErrorBoundary>
-          <Router />
+          <Suspense fallback={<Spinner label="正在打开页面" />}><Router /></Suspense>
         </ErrorBoundary>
       </Shell>
       <Toasts />

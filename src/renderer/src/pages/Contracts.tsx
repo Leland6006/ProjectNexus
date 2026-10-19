@@ -1,10 +1,12 @@
+import { ContractImportButton } from '@/components/BusinessTools'
 import { useMemo, useState } from 'react'
 import { FileText, Search } from 'lucide-react'
 import type { ContractStatus } from '@shared/types'
 import { Card, EmptyState, Input, PageHeader, Select } from '@/components/ui'
 import { ContractStatusBadge } from '@/components/badges'
 import { formatDateTime } from '@/lib/utils'
-import { orgOf } from '@/lib/selectors'
+import { currentUser, orgOf } from '@/lib/selectors'
+import { contractRoute } from '@/routes'
 import { useApp, useView } from '@/store'
 
 export default function ContractsPage() {
@@ -27,7 +29,7 @@ export default function ContractsPage() {
 
   return (
     <div className="mx-auto max-w-6xl p-6">
-      <PageHeader title="合同中心" subtitle="你有权查看的全部合同。新合同请在交易项目中创建" />
+      <PageHeader title="全部合同" subtitle="你有权查看的全部合同。可从 DOCX 或文字型 PDF 建立合同草稿" actions={currentUser(s).role !== 'external_counsel' && <ContractImportButton />} />
       <div className="mb-3 flex items-center gap-2">
         <div className="relative w-72">
           <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-ink-400" />
@@ -59,7 +61,7 @@ export default function ContractsPage() {
               {rows.map((c) => {
                 const tx = s.transactions.find((t) => t.id === c.transactionId)
                 return (
-                  <tr key={c.id} onClick={() => navigate({ page: 'contracts', contractId: c.id })} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50">
+                  <tr key={c.id} onClick={() => navigate(contractRoute(c.id))} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium">{c.title}</td>
                     <td className="px-4 py-3 text-ink-700">{tx?.name}</td>
                     <td className="px-4 py-3 text-ink-700">{s.versions.filter((v) => v.contractId === c.id).length}</td>

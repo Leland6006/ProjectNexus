@@ -1,7 +1,10 @@
+import { readFile, stat } from 'node:fs/promises'
+import { basename } from 'node:path'
+import { AiSettings, createDeepSeekRuntime, createDeepSeekLlm } from './ai.ts'
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, session as electronSession, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, safeStorage, session as electronSession, shell } from 'electron'
 import { API_METHODS } from '../shared/api.ts'
-import { createSession, handleCall, type Session } from './handlers.ts'
+import { createSession, handleCall, setRuntime, setLlmClient, pauseAnalyses, type Session } from './handlers.ts'
 import { JsonStore } from './store.ts'
 
 let store: JsonStore
@@ -72,11 +75,33 @@ app.whenReady().then(() => {
   electronSession.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false))
   installCsp()
 
-  store = new JsonStore(app.getPath('userData'))
+  const dataPath = !app.isPackaged && process.env['NEXUS_DEV_DATA_DIR'] ? process.env['NEXUS_DEV_DATA_DIR'] : app.getPath('userData')
+  store = new JsonStore(dataPath)
   const loaded = store.load()
   session = createSession(loaded.db, loaded.currentUserId, (s) =>
     store.save({ db: s.service.db, currentUserId: s.currentUserId })
   )
+
+  session.selectContractFile = async () => {
+    const selected = await dialog.showOpenDialog({ title: '导入合同（仅在本机解析）', properties: ['openFile'], filters: [{ name: '合同文件', extensions: ['docx', 'pdf'] }] })
+    const file = selected.filePaths[0]
+    if (selected.canceled || !file) return null
+    if ((await stat(file)).size > 10 * 1024 * 1024) throw new Error('文件超过 10 MB，请拆分后导入')
+    return { fileName: basename(file), bytes: await readFile(file) }
+  }
+
+  session.aiSettings = new AiSettings(dataPath, {
+    available: () => safeStorage.isEncryptionAvailable() && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
+    encrypt: (text) => safeStorage.encryptString(text), decrypt: (bytes) => safeStorage.decryptString(bytes)
+  })
+  const config = session.aiSettings.load()
+  if (config) { setRuntime(createDeepSeekRuntime(config)); setLlmClient(createDeepSeekLlm(config)) }
+  session.onWorkflowProgress = (state) => {
+    for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send('nexus:workflow-progress', state)
+  }
+  session.onChatProgress = (event) => {
+    for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send('nexus:chat-progress', event)
+  }
 
   ipcMain.handle('nexus:call', (_event, method: unknown, args: unknown) => {
     const list = Array.isArray(args) ? (args as unknown[]) : []
@@ -89,7 +114,7 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('before-quit', () => store?.flush())
+app.on('before-quit', () => { session?.chatRun?.controller.abort(); if (session) pauseAnalyses(session); store?.flush() })
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

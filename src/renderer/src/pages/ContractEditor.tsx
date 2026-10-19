@@ -1,3 +1,5 @@
+import { internalReviewBlocker } from '@shared/terms'
+import { InternalReviewPanel } from '@/components/contract/InternalReviewPanel'
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Bot, CheckCheck, Clock, GitCompare, History, MessageSquare, Save, Share2 } from 'lucide-react'
 import type { Clause } from '@shared/types'
@@ -13,15 +15,17 @@ import { SuggestionsPanel } from '@/components/contract/SuggestionsPanel'
 import { Badge, Button, EmptyState } from '@/components/ui'
 import { cn, formatDateTime } from '@/lib/utils'
 import { accessFor, orgOf } from '@/lib/selectors'
+import { projectRoute } from '@/routes'
 import { useApp, useView } from '@/store'
 
-type RightTab = 'comments' | 'suggestions' | 'activity' | 'ai'
+type RightTab = 'comments' | 'suggestions' | 'activity' | 'ai' | 'review'
 
 const TABS = [
   ['comments', '评论', MessageSquare],
   ['suggestions', '修改建议', GitCompare],
   ['activity', '协商记录', History],
-  ['ai', 'AI助手', Bot]
+  ['ai', 'AI助手', Bot],
+  ['review', '内部审阅', CheckCheck]
 ] as const
 
 function clauseId(): string {
@@ -38,6 +42,7 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
   const busy = useApp((x) => x.busy)
   const navigate = useApp((x) => x.navigate)
   const toast = useApp((x) => x.toast)
+  const setLeaveGuard = useApp((x) => x.setLeaveGuard)
 
   const contract = s.contracts.find((c) => c.id === contractId)
   const tx = contract && s.transactions.find((t) => t.id === contract.transactionId)
@@ -45,7 +50,7 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
   const [draft, setDraft] = useState<Clause[]>(contract?.clauses ?? [])
   const [dirty, setDirty] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(contract?.clauses[0]?.id ?? null)
-  const [tab, setTab] = useState<RightTab>('comments')
+  const [tab, setTab] = useState<RightTab>(s.internalReviews.some((r) => r.contractId === contractId && r.reviewerId === s.currentUserId && r.status === 'pending') ? 'review' : 'comments')
   const [showVersions, setShowVersions] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
   const [suggestFor, setSuggestFor] = useState<string | null>(null)
@@ -68,15 +73,23 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
     return () => window.removeEventListener('beforeunload', h)
   }, [dirty])
 
+  // In-app navigation away from unsaved edits asks first.
+  useEffect(() => {
+    if (!dirty) return
+    setLeaveGuard(() => window.confirm('有未保存的修改，确定离开吗？'))
+    return () => setLeaveGuard(null)
+  }, [dirty, setLeaveGuard])
+
   if (!contract || !tx) {
     return (
       <div className="p-6">
-        <EmptyState title="合同不存在或无权访问" action={<Button onClick={() => navigate({ page: 'contracts' })}>返回合同中心</Button>} />
+        <EmptyState title="合同不存在或无权访问" action={<Button onClick={() => navigate({ module: 'business', view: 'contracts' })}>返回全部合同</Button>} />
       </div>
     )
   }
 
   const a = accessFor(s, tx)
+  const reviewBlock = internalReviewBlocker(contract, s.versions, s.internalReviews, a.orgId ?? '')
   const locked = contract.status === 'finalized'
   const canEdit = a.isOwner && !locked
   const versions = sortVersionsDesc(s.versions.filter((v) => v.contractId === contract.id))
@@ -96,16 +109,15 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
     return ok
   }
 
-  const goBack = (): void => {
-    if (dirty && !window.confirm('有未保存的修改，确定离开吗？')) return
-    navigate({ page: 'transactions', transactionId: tx.id })
-  }
+  // Unsaved edits are guarded centrally (see the leave guard above), so every way out of
+  // the editor — this button, the sidebar, module switches, account switches — asks once.
+  const goBack = (): void => navigate(projectRoute(tx.id))
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-2.5">
         <div className="flex items-center gap-3">
-          <button onClick={goBack} aria-label="返回交易项目" className="rounded p-1 text-ink-500 hover:bg-slate-100">
+          <button onClick={goBack} aria-label="返回业务项目" className="rounded p-1 text-ink-500 hover:bg-slate-100">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div>
@@ -125,7 +137,7 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
             <History className="h-3.5 w-3.5" />
             版本历史（{versions.length}）
           </Button>
-          {a.isOwner && !contract.sharedWithCounterparty && (
+          {a.isOwner && !contract.sharedWithCounterparty && !orgOf(s, tx.counterpartyOrgId)?.localOnly && (
             <Button
               loading={busy}
               onClick={() => {
@@ -152,9 +164,9 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
           {a.isParty && contract.sharedWithCounterparty && !locked && latest && (
             <Button
               variant={iConfirmed ? 'secondary' : 'primary'}
-              disabled={!canConfirmFinal({ isParty: a.isParty, shared: contract.sharedWithCounterparty, locked, hasLatest: true, alreadyConfirmed: iConfirmed, dirty })}
+              disabled={!!reviewBlock || !canConfirmFinal({ isParty: a.isParty, shared: contract.sharedWithCounterparty, locked, hasLatest: true, alreadyConfirmed: iConfirmed, dirty })}
               loading={busy}
-              title={dirty ? '请先保存新版本再确认' : undefined}
+              title={dirty ? '请先保存新版本再确认' : reviewBlock ?? undefined}
               onClick={() => void act('confirmFinal', [contract.id, latest.id], '已确认该版本')}
             >
               <CheckCheck className="h-3.5 w-3.5" />
@@ -164,6 +176,7 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
         </div>
       </div>
 
+      {reviewBlock && <div className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-800">{reviewBlock} · 请在右侧「内部审阅」处理</div>}
       {locked && <div className="border-b border-emerald-200 bg-emerald-50 px-5 py-2 text-xs text-emerald-800">双方已确认最终版本，合同内容已锁定，不能再修改。</div>}
       {!canEdit && !locked && (
         <div className="border-b border-blue-200 bg-blue-50 px-5 py-2 text-xs text-blue-800">
@@ -171,7 +184,7 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[240px_minmax(0,1fr)_360px]">
+      <div className="grid min-h-0 flex-1 grid-cols-[208px_minmax(0,1fr)_320px] xl:grid-cols-[240px_minmax(0,1fr)_360px]">
         <ClauseOutline
           contractId={contract.id}
           clauses={draft}
@@ -232,6 +245,7 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
               />
             )}
             {tab === 'activity' && <ActivityPanel contract={contract} />}
+            {tab === 'review' && <InternalReviewPanel contract={contract} dirty={dirty} />}
             {tab === 'ai' && <AiPanel contract={contract} />}
           </div>
         </aside>

@@ -4,11 +4,25 @@
 
 export type OrgKind = 'company' | 'law_firm'
 
+export interface CompanyProfile {
+  industry: string
+  business: string
+  goal: string
+  stage: string
+  teamSize: number | null
+  region: string
+  updatedAt: string
+  updatedBy: string
+}
+
 export interface Organization {
+  localOnly?: boolean
+  ownerOrgId?: string
   id: string
   name: string
   kind: OrgKind
   shortName: string
+  profile?: CompanyProfile | null
 }
 
 export type UserRole = 'business' | 'legal' | 'external_counsel'
@@ -87,6 +101,10 @@ export interface PaymentTerms {
   instalments: PaymentInstalment[]
   /** Days between acceptance and final settlement. */
   settlementDays: number
+  /** Required for reliable forecasts; null means not yet verified. */
+  verifiedClausesFingerprint?: string
+  payerOrgId?: string | null
+  acceptanceDate?: string | null
 }
 
 export interface Contract {
@@ -203,6 +221,7 @@ export interface CostItem {
   visibility: Visibility
   createdBy: string
   createdAt: string
+  updatedAt?: string
 }
 
 export interface CashAccount {
@@ -212,6 +231,8 @@ export interface CashAccount {
   /** Cash on hand at `asOf`. */
   openingBalance: number
   asOf: string
+  updatedAt?: string
+  updatedBy?: string
 }
 
 /**
@@ -257,7 +278,7 @@ export interface Claim {
   confirmedAt: string | null
 }
 
-export type DomainEventType = 'payment_terms_changed' | 'cost_committed' | 'milestone_delayed'
+export type DomainEventType = 'payment_terms_changed' | 'cost_committed' | 'milestone_delayed' | 'business_review_requested'
 
 /**
  * A business change worth reacting to. Payload holds numbers, not prose, so the
@@ -289,6 +310,9 @@ export interface ProposedAction {
  * refused if the contract moved on in the meantime (`baseVersionId`).
  */
 export interface Proposal {
+  analysisRunId?: string | null
+  executionSuggestionIds?: string[]
+  invalidatedReason?: string | null
   id: string
   transactionId: string
   contractId: string | null
@@ -345,6 +369,201 @@ export interface Activity {
   createdAt: string
 }
 
+/**
+ * A private working conversation with Nexus. It belongs to one account acting for one
+ * operating company; nobody else can open it, including colleagues in the same company.
+ * What is said here is discussion only and never becomes company memory by itself.
+ */
+export interface Conversation {
+  id: string
+  ownerUserId: string
+  /** Operating company the conversation belongs to (the owner's organisation). */
+  orgId: string
+  title: string
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * user      : typed by the owner
+ * system    : a status notice written by Nexus itself (for example "AI not connected").
+ *             It reports what happened; it is never advice or analysis.
+ * assistant : a reply produced by a configured runtime.
+ */
+export type ChatRole = 'user' | 'system' | 'assistant'
+
+export interface DataReference {
+  id: string
+  label: string
+  detail: string
+}
+
+export interface ProfileUpdateDraft {
+  values: Omit<CompanyProfile, 'updatedAt' | 'updatedBy'>
+  baseUpdatedAt: string | null
+  appliedAt?: string
+}
+
+export interface ChatMessage {
+  id: string
+  conversationId: string
+  role: ChatRole
+  body: string
+  /** Runtime that produced a non-user message ('none' when no AI is connected). */
+  runtime: string | null
+  references?: DataReference[]
+  profileUpdate?: ProfileUpdateDraft
+  createdAt: string
+}
+
+export type SpecialistId = 'finance' | 'legal' | 'ops' | 'main'
+export interface AnalysisStep {
+  agentId: SpecialistId
+  status: 'pending' | 'running' | 'completed' | 'skipped' | 'failed'
+  findings: string[]
+  recommendation: string | null
+  claims: Claim[]
+  contextKeys: string[]
+  error: string | null
+  startedAt: string | null
+  finishedAt: string | null
+}
+
+export interface AnalysisRun {
+  id: string
+  orgId: string
+  transactionId: string
+  createdBy: string
+  status: 'running' | 'paused' | 'failed' | 'completed' | 'stale' | 'cancelled'
+  trigger: string
+  event: DomainEvent | null
+  sourceRevision: string
+  provider: string
+  steps: AnalysisStep[]
+  proposalId: string | null
+  error: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type TaskStatus = 'open' | 'in_progress' | 'waiting_user' | 'paused' | 'completed' | 'cancelled'
+export interface TaskStep {
+  id: string
+  title: string
+  status: 'pending' | 'completed'
+  result: string | null
+  completedBy: string | null
+  completedAt: string | null
+}
+export interface BusinessTask {
+  id: string
+  orgId: string
+  transactionId: string
+  contractId: string | null
+  proposalId: string | null
+  actionIndex: number | null
+  title: string
+  detail: string
+  ownerUserId: string
+  dueDate: string | null
+  status: TaskStatus
+  revision: number
+  requiresReview: boolean
+  steps: TaskStep[]
+  history: { at: string; actorId: string; summary: string }[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Counterparty {
+  id: string
+  orgId: string
+  name: string
+  contactName: string
+  email: string
+  createdAt: string
+}
+
+export interface ContractImportDraft {
+  id: string
+  orgId: string
+  createdBy: string
+  fileName: string
+  rawText: string
+  candidates: { field: 'partyA' | 'partyB' | 'amount' | 'date'; value: string; quote: string }[]
+  warnings: string[]
+  status: 'pending' | 'confirmed'
+  contractId: string | null
+  createdAt: string
+}
+
+export interface InternalReview {
+  id: string
+  orgId: string
+  transactionId: string
+  contractId: string
+  requestedBy: string
+  reviewerId: string
+  sourceFingerprint: string
+  status: 'pending' | 'approved' | 'rejected'
+  comment: string
+  createdAt: string
+  decidedAt: string | null
+}
+
+export interface CashPlan {
+  id: string
+  orgId: string
+  transactionId: string | null
+  costItemId: string | null
+  title: string
+  direction: 'in' | 'out'
+  amount: number
+  dueDate: string
+  status: 'active' | 'cancelled'
+  revision: number
+  createdBy: string
+  updatedAt: string
+}
+
+export interface CashEntry {
+  id: string
+  orgId: string
+  requestId: string
+  accountId: string
+  planId: string | null
+  transactionId: string | null
+  direction: 'in' | 'out'
+  amount: number
+  date: string
+  note: string
+  evidence: string
+  status: 'posted' | 'void'
+  voidReason: string | null
+  createdBy: string
+  createdAt: string
+  voidedBy: string | null
+  voidedAt: string | null
+}
+
+export interface InvoiceCase {
+  id: string
+  orgId: string
+  transactionId: string
+  title: string
+  buyerName: string
+  buyerTaxId: string
+  itemName: string
+  amount: number
+  note: string
+  stage: 'materials' | 'checked' | 'submitted' | 'recorded'
+  invoiceNumber: string | null
+  result: string | null
+  revision: number
+  history: { at: string; actorId: string; summary: string }[]
+  createdAt: string
+}
+
 export interface Database {
   /** Storage schema version; see src/shared/migrations.ts for the upgrade chain. */
   schemaVersion: number
@@ -362,6 +581,23 @@ export interface Database {
   cashAccounts: CashAccount[]
   claims: Claim[]
   proposals: Proposal[]
+  conversations: Conversation[]
+  chatMessages: ChatMessage[]
+  analysisRuns: AnalysisRun[]
+  tasks: BusinessTask[]
+  counterparties: Counterparty[]
+  importDrafts: ContractImportDraft[]
+  internalReviews: InternalReview[]
+  cashPlans: CashPlan[]
+  cashEntries: CashEntry[]
+  invoiceCases: InvoiceCase[]
+}
+
+/** Which conversation runtime is installed in the main process. The UI never guesses. */
+export interface RuntimeStatus {
+  id: string
+  connected: boolean
+  model?: string
 }
 
 /** Organisations and accounts, used by the demo directory views. */
@@ -397,6 +633,18 @@ export interface ViewState {
   claims: Claim[]
   /** Agent drafts waiting for a human decision. */
   proposals: Proposal[]
+  /** Only the acting account's own conversations in its own company. */
+  conversations: Conversation[]
+  chatMessages: ChatMessage[]
+  analysisRuns: AnalysisRun[]
+  tasks: BusinessTask[]
+  counterparties: Counterparty[]
+  importDrafts: ContractImportDraft[]
+  internalReviews: InternalReview[]
+  cashPlans: CashPlan[]
+  cashEntries: CashEntry[]
+  invoiceCases: InvoiceCase[]
+  runtime: RuntimeStatus
 }
 
 export type NexusErrorCode =

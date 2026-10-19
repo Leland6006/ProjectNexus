@@ -11,7 +11,7 @@
 import type { Database } from './types.ts'
 
 /** Bump this whenever `Database` changes shape, and add the matching step below. */
-export const CURRENT_SCHEMA_VERSION = 2
+export const CURRENT_SCHEMA_VERSION = 7
 
 /**
  * Files written before versioning existed carry no `schemaVersion`. They are treated as
@@ -55,6 +55,50 @@ export const MIGRATIONS: MigrationStep[] = [
       for (const v of db.versions) if (loose(v).paymentTerms === undefined) loose(v).paymentTerms = null
       db.schemaVersion = 2
     }
+  },
+  {
+    // Round 1 framework: private Nexus conversations. Existing data is untouched.
+    from: 2,
+    to: 3,
+    up: (db) => {
+      db.conversations ??= []
+      db.chatMessages ??= []
+      db.schemaVersion = 3
+    }
+  },
+  {
+    from: 3, to: 4,
+    up: (db) => {
+      for (const org of db.organizations) org.profile ??= null
+      for (const p of db.proposals) if (p.status === 'pending') p.invalidatedReason = '资金计算口径已升级，请核对付款方、预计验收日与余额后重新分析。'
+      db.schemaVersion = 4
+    }
+  },
+  {
+    from: 4, to: 5,
+    up: (db) => {
+      db.analysisRuns ??= []
+      db.tasks ??= []
+      db.schemaVersion = 5
+    }
+  },
+  {
+    from: 5, to: 6,
+    up: (db) => {
+      db.counterparties ??= []
+      db.importDrafts ??= []
+      db.internalReviews ??= []
+      db.schemaVersion = 6
+    }
+  },
+  {
+    from: 6, to: 7,
+    up: (db) => {
+      db.cashPlans ??= []
+      db.cashEntries ??= []
+      db.invoiceCases ??= []
+      db.schemaVersion = 7
+    }
   }
 ]
 
@@ -77,6 +121,12 @@ export function looksLikeDatabase(value: unknown): value is Database {
   if (typeof db.schemaVersion === 'number' && db.schemaVersion >= 2) {
     arrays.push('proposals', 'claims', 'costItems', 'cashAccounts')
   }
+  if (typeof db.schemaVersion === 'number' && db.schemaVersion >= 3) {
+    arrays.push('conversations', 'chatMessages')
+  }
+  if (typeof db.schemaVersion === 'number' && db.schemaVersion >= 5) arrays.push('analysisRuns', 'tasks')
+  if (typeof db.schemaVersion === 'number' && db.schemaVersion >= 6) arrays.push('counterparties', 'importDrafts', 'internalReviews')
+  if (typeof db.schemaVersion === 'number' && db.schemaVersion >= 7) arrays.push('cashPlans', 'cashEntries', 'invoiceCases')
   return arrays.every((k) => Array.isArray(db[k]))
 }
 

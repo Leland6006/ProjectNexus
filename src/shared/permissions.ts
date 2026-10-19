@@ -6,6 +6,7 @@ import type {
   Contract,
   Database,
   Organization,
+  RuntimeStatus,
   Transaction,
   User,
   ViewState,
@@ -114,6 +115,8 @@ export interface ViewOptions {
    * them. A server must never set this.
    */
   demoDirectory?: boolean
+  /** Conversation runtime installed in the host. Defaults to "nothing connected". */
+  runtime?: RuntimeStatus
 }
 
 /** Everything a given user is allowed to see. The renderer never receives more than this. */
@@ -189,6 +192,10 @@ export function buildViewState(db: Database, userId: string, opts: ViewOptions =
       (!p.contractId || contractById.has(p.contractId))
   })
 
+  const internalObject = (item: { orgId: string; transactionId: string }) => user.role !== 'external_counsel' && item.orgId === user.orgId && visibleTxIds.has(item.transactionId)
+  const analysisRuns = db.analysisRuns.filter(internalObject)
+  const tasks = db.tasks.filter(internalObject)
+
   const activities = db.activities.filter((a) => {
     const tx = txById.get(a.transactionId)
     if (!tx || !visibleTxIds.has(a.transactionId)) return false
@@ -199,6 +206,12 @@ export function buildViewState(db: Database, userId: string, opts: ViewOptions =
     }
     return true
   })
+
+  // Conversations are private to the account and to the company it acts for. A colleague
+  // in the same company does not see them, and neither does anybody else.
+  const conversations = db.conversations.filter((c) => c.ownerUserId === user.id && c.orgId === user.orgId)
+  const conversationIds = new Set(conversations.map((c) => c.id))
+  const chatMessages = db.chatMessages.filter((m) => conversationIds.has(m.conversationId))
 
   // Directory: only organisations and people the user legitimately deals with. Sending
   // the whole user table to every client would leak the customer list once this runs on
@@ -231,7 +244,7 @@ export function buildViewState(db: Database, userId: string, opts: ViewOptions =
     if (knownUserIds.has(u.id)) relatedOrgIds.add(u.orgId)
   }
 
-  const organizations: Organization[] = db.organizations.filter((o) => relatedOrgIds.has(o.id))
+  const organizations: Organization[] = db.organizations.filter((o) => (relatedOrgIds.has(o.id) || (o.localOnly && o.ownerOrgId === user.orgId && user.role !== 'external_counsel'))).map((o) => ({ ...o, profile: o.id === user.orgId && user.role !== 'external_counsel' ? o.profile : null }))
   const users = db.users.filter((u) => relatedOrgIds.has(u.orgId) || knownUserIds.has(u.id))
 
   return {
@@ -239,7 +252,7 @@ export function buildViewState(db: Database, userId: string, opts: ViewOptions =
     representingOrgId: user.role === 'external_counsel' ? asOrgId : null,
     organizations,
     users,
-    demoAccounts: opts.demoDirectory ? { organizations: db.organizations, users: db.users } : null,
+    demoAccounts: opts.demoDirectory ? { organizations: db.organizations.filter((o) => !o.localOnly || (o.ownerOrgId === user.orgId && user.role !== 'external_counsel')).map((o) => ({ ...o, profile: null })), users: db.users } : null,
     transactions,
     contracts,
     versions,
@@ -251,6 +264,17 @@ export function buildViewState(db: Database, userId: string, opts: ViewOptions =
     costItems,
     cashAccounts,
     claims,
-    proposals
+    proposals,
+    conversations,
+    chatMessages,
+    analysisRuns,
+    tasks,
+    counterparties: db.counterparties.filter((c) => c.orgId === user.orgId && user.role !== 'external_counsel'),
+    importDrafts: db.importDrafts.filter((d) => d.createdBy === user.id && d.orgId === user.orgId && user.role !== 'external_counsel'),
+    internalReviews: db.internalReviews.filter((r) => internalObject(r) && contractById.has(r.contractId)),
+    cashPlans: db.cashPlans.filter((p) => p.orgId === user.orgId && user.role !== 'external_counsel'),
+    cashEntries: db.cashEntries.filter((e) => e.orgId === user.orgId && user.role !== 'external_counsel'),
+    invoiceCases: db.invoiceCases.filter((i) => internalObject(i)),
+    runtime: opts.runtime ?? { id: 'none', connected: false }
   }
 }

@@ -1,3 +1,4 @@
+import { clausesFingerprint } from '../src/shared/terms.ts'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -10,8 +11,8 @@ import { claimsForProposal } from '../src/shared/proposalView.ts'
 import { createSeedDatabase, DEFAULT_USER_ID, ORG_A, ORG_B } from '../src/shared/seed.ts'
 import { NexusError, type Claim, type ContractVersion, type Database, type PaymentTerms } from '../src/shared/types.ts'
 
-const TERMS_A: PaymentTerms = { prepayRate: 0.5, instalments: [], settlementDays: 15 }
-const TERMS_B: PaymentTerms = { prepayRate: 0.1, instalments: [], settlementDays: 15 }
+const TERMS_A: PaymentTerms = { prepayRate: 0.5, instalments: [], settlementDays: 15, payerOrgId: ORG_B, acceptanceDate: '2026-11-05' }
+const TERMS_B: PaymentTerms = { prepayRate: 0.1, instalments: [], settlementDays: 15, payerOrgId: ORG_B, acceptanceDate: '2026-11-05' }
 
 const TX = 'tx_equip'
 const CONTRACT = 'ct_equip'
@@ -34,7 +35,7 @@ function version(n: number, terms: PaymentTerms | null): ContractVersion {
 function scenario(): Database {
   const db = createSeedDatabase()
   const contract = db.contracts.find((c) => c.id === CONTRACT)!
-  contract.paymentTerms = TERMS_B
+  contract.paymentTerms = { ...TERMS_B, verifiedClausesFingerprint: clausesFingerprint(contract.clauses) }
   db.versions = db.versions.filter((v) => v.contractId !== CONTRACT)
   db.versions.push(version(1, TERMS_A), version(2, TERMS_B))
   return db
@@ -305,7 +306,7 @@ test('inferences are outputs, never premises for another agent', () => {
   assert.deepEqual(excluded.map((c) => c.id), ['cl_2'])
 })
 
-test('approval promotes claims, writes a trail, and refuses a stale draft', async () => {
+test('approval writes a trail, keeps evidence as-is, and refuses a stale draft', async () => {
   const db = scenario()
   const result = await runOrchestrator({
     db,
@@ -340,10 +341,12 @@ test('approval promotes claims, writes a trail, and refuses a stale draft', asyn
   db.claims.push(...fresh.claims)
   db.proposals.push(p2)
 
+  const statusBefore = new Map(db.claims.map((c) => [c.id, c.status]))
   const approved = approveProposal({ db, proposalId: p2.id, userId: DEFAULT_USER_ID, at: '2026-10-18T11:30:00.000Z' })
   assert.equal(approved.proposal.status, 'approved')
   assert.ok(approved.claims.length > 0)
-  assert.ok(approved.claims.every((c) => c.status === 'confirmed'))
+  // Adopting the plan must not have changed the epistemic status of anything it cited.
+  for (const c of db.claims) assert.equal(c.status, statusBefore.get(c.id), `claim ${c.key} changed status on approval`)
   assert.equal(db.activities.filter((a) => a.type === 'proposal_approved').length, 1)
 
   assert.throws(

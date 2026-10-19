@@ -69,7 +69,7 @@ export function paymentSchedule(tx: Transaction, terms: PaymentTerms): CashflowL
     lines.push({
       label: `验收后 ${terms.settlementDays} 日尾款`,
       amount: money(tx.amount * remainder),
-      date: addDays(latest, terms.settlementDays)
+      date: addDays(terms.acceptanceDate ?? latest, terms.settlementDays)
     })
   }
   return lines
@@ -80,6 +80,7 @@ export interface ForecastInput {
   terms: PaymentTerms
   /** Already scoped to the viewer; the caller decides whose costs count. */
   costs?: CostItem[]
+  perspectiveOrgId?: string
   account?: CashAccount | null
 }
 
@@ -90,18 +91,24 @@ export interface ForecastInput {
  */
 export function forecastCashflow(input: ForecastInput): CashflowForecast {
   const { transaction: tx, terms, costs = [], account = null } = input
-  const inflows = paymentSchedule(tx, terms)
-  const outflows: CashflowLine[] = costs.map((c) => ({
+  const schedule = paymentSchedule(tx, terms)
+  const paying = !!input.perspectiveOrgId && terms.payerOrgId === input.perspectiveOrgId
+  const inflows = paying ? [] : schedule
+  const outflows: CashflowLine[] = costs.filter((c) => c.status !== 'paid').map((c) => ({
     label: c.name,
     amount: money(c.amount),
     date: day(c.dueDate)
   }))
 
-  const points: { date: string; delta: number }[] = [
+  if (paying) outflows.push(...schedule)
+  const rawPoints: { date: string; delta: number }[] = [
     ...inflows.map((l) => ({ date: l.date, delta: l.amount })),
     ...outflows.map((l) => ({ date: l.date, delta: -l.amount }))
   ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 
+  const grouped = new Map<string, number>()
+  for (const p of rawPoints) grouped.set(p.date, money((grouped.get(p.date) ?? 0) + p.delta))
+  const points = [...grouped].map(([date, delta]) => ({ date, delta }))
   let balance = account?.openingBalance ?? 0
   const timeline: TimelinePoint[] = []
   let minBalance = balance

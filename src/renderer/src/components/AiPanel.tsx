@@ -49,7 +49,7 @@ export function AiPanel({ contract }: { contract: Contract }) {
           <Bot className="h-4 w-4" />
           模拟AI输出
         </div>
-        当前未接入任何 AI 模型。下方结果由本地简单规则（统计、关键词匹配）生成，仅用于演示未来的 AI 助手入口，不构成法律意见。
+        本面板不调用模型，下方结果由本地简单规则（统计、关键词匹配）生成。配置后的真实 AI 对话请从 Nexus 首页进入；此处结果不构成法律意见。
       </div>
       <div className="flex flex-wrap gap-1.5">
         {tabs.map((t) => (

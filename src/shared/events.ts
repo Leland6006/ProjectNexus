@@ -24,6 +24,8 @@ function termsFingerprint(t: PaymentTerms | null): string {
   return JSON.stringify([
     t.prepayRate,
     t.settlementDays,
+    t.payerOrgId ?? null,
+    t.acceptanceDate ?? null,
     t.instalments.map((i) => [i.label, i.rate, i.dueDate])
   ])
 }
