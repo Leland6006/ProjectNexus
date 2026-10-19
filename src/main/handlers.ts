@@ -43,19 +43,39 @@ export function setLlmClient(client: LlmClient | null): void {
   llmClient = client
 }
 
-/** Runs the agent graph for a transaction and persists what it produced. */
+const activeRuns = new WeakMap<Session, Map<string, symbol>>()
+
+function analysisInputs(db: Database): string {
+  return JSON.stringify([db.users, db.transactions, db.contracts, db.versions, db.costItems, db.cashAccounts, db.claims])
+}
+
+/** Runs the agent graph for a transaction and persists only a still-current result. */
 export async function runAgentsFor(session: Session, transactionId: string): Promise<void> {
   const db = session.service.db
+  const userId = session.currentUserId
+  const representingOrgId = session.actor.representingOrgId
+  const baseline = analysisInputs(db)
+  const runs = activeRuns.get(session) ?? new Map<string, symbol>()
+  activeRuns.set(session, runs)
+  const token = Symbol()
+  const key = `${userId}:${representingOrgId}:${transactionId}`
+  runs.set(key, token)
   try {
     const result = await runOrchestrator({
       db,
-      userId: session.currentUserId,
+      userId,
       transactionId,
       llm: llmClient,
       now: new Date().toISOString(),
-      representingOrgId: session.actor.representingOrgId
+      representingOrgId
     })
-    for (const c of result.claims) mergeClaim(db.claims, c)
+    if (runs.get(key) !== token || session.currentUserId !== userId ||
+        session.actor.representingOrgId !== representingOrgId || analysisInputs(db) !== baseline) {
+      throw new NexusError('CONFLICT', '分析期间数据或身份已变更，请重新分析')
+    }
+    const claimIds = new Map<string, string>()
+    for (const c of result.claims) claimIds.set(c.id, mergeClaim(db.claims, c).claim.id)
+    if (result.proposal) result.proposal.claimIds = [...new Set(result.proposal.claimIds.map((id) => claimIds.get(id) ?? id))]
     if (result.proposal) {
       if (isDuplicateProposal(db, result.proposal)) {
         // Refresh the draft already waiting: newest numbers, re-based on the current version.
@@ -67,10 +87,10 @@ export async function runAgentsFor(session: Session, transactionId: string): Pro
         db.proposals.push(result.proposal)
       }
     }
-  } catch (err) {
-    console.error('[agents] orchestration failed', err)
+    session.service.notifyChanged()
+  } finally {
+    if (runs.get(key) === token) runs.delete(key)
   }
-  session.service.notifyChanged()
 }
 
 function str(v: unknown): string {
@@ -166,10 +186,12 @@ export async function handleCall(session: Session, method: unknown, args: unknow
         break
       }
       case 'approveProposal':
-        approveProposal({ db: s.db, proposalId: str(args[0]), userId: me, at: new Date().toISOString() })
+        approveProposal({ db: s.db, proposalId: str(args[0]), userId: me, at: new Date().toISOString(), representingOrgId: session.actor.representingOrgId })
+        s.notifyChanged()
         break
       case 'rejectProposal':
-        rejectProposal({ db: s.db, proposalId: str(args[0]), userId: me, at: new Date().toISOString() })
+        rejectProposal({ db: s.db, proposalId: str(args[0]), userId: me, at: new Date().toISOString(), representingOrgId: session.actor.representingOrgId })
+        s.notifyChanged()
         break
       case 'confirmClaim': {
         // The one place an inference becomes company memory. Gated on the claim already

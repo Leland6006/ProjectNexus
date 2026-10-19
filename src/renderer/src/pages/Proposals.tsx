@@ -15,6 +15,7 @@ import {
   sortForReview,
   unconfirmedClaims
 } from '@shared/proposalView'
+import { canPromote } from '@shared/context'
 import type { Claim } from '@shared/types'
 import { Badge, Button, Card, CardHeader, EmptyState, PageHeader, Select } from '@/components/ui'
 import { cn, formatDateTime } from '@/lib/utils'
@@ -25,7 +26,7 @@ import { useApp, useView } from '@/store'
 function ClaimRow({ claim, dense }: { claim: Claim; dense?: boolean }) {
   const act = useApp((x) => x.act)
   const busy = useApp((x) => x.busy)
-  const canConfirm = claim.status !== 'confirmed'
+  const canConfirm = canPromote(claim)
   return (
     <li className={cn('flex items-start gap-2 rounded-md border border-slate-100 px-2.5', dense ? 'py-1.5' : 'py-2')}>
       <Badge tone={CLAIM_STATUS_TONE[claim.status]}>{CLAIM_STATUS_LABEL[claim.status]}</Badge>
@@ -57,7 +58,7 @@ function ProposalCard({ id }: { id: string }) {
   const p = s.proposals.find((x) => x.id === id)!
   const tx = s.transactions.find((t) => t.id === p.transactionId)
   const stale = isStaleProposal(s.versions, p)
-  const { found } = claimsForProposal(s.claims, p)
+  const { found, missing } = claimsForProposal(s.claims, p)
   const author = p.createdBy.startsWith('agent:') ? AGENT_LABEL[p.createdBy.slice(6) as keyof typeof AGENT_LABEL] ?? 'Nexus Agent' : '人工起草'
 
   const decide = async (approve: boolean): Promise<void> => {
@@ -91,6 +92,13 @@ function ProposalCard({ id }: { id: string }) {
           <div className="flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             合同已在建议生成之后被修改，建议已失效。请重新运行分析，再决定是否采纳。
+          </div>
+        )}
+
+        {missing.length > 0 && (
+          <div role="alert" className="flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            {missing.length} 条依据缺失或当前无权查看，暂时无法采纳。请重新运行分析或联系有权查看完整依据的人员处理。
           </div>
         )}
 
@@ -135,7 +143,7 @@ function ProposalCard({ id }: { id: string }) {
             <X className="h-3.5 w-3.5" />
             忽略
           </Button>
-          <Button size="sm" variant="primary" loading={busy} disabled={stale} onClick={() => void decide(true)}>
+          <Button size="sm" variant="primary" loading={busy} disabled={stale || missing.length > 0} onClick={() => void decide(true)}>
             <Check className="h-3.5 w-3.5" />
             采纳
           </Button>

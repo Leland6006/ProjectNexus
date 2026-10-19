@@ -184,7 +184,9 @@ export function buildViewState(db: Database, userId: string, opts: ViewOptions =
   const proposals = db.proposals.filter((p) => {
     const tx = txById.get(p.transactionId)
     if (!tx || !visibleTxIds.has(p.transactionId)) return false
-    return effectiveOrgId(user, tx, asOrgId) === p.orgId
+    // Proposals contain derived internal financial information, including their prose.
+    return user.role !== 'external_counsel' && effectiveOrgId(user, tx, asOrgId) === p.orgId &&
+      (!p.contractId || contractById.has(p.contractId))
   })
 
   const activities = db.activities.filter((a) => {

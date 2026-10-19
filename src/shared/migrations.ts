@@ -74,6 +74,9 @@ export function looksLikeDatabase(value: unknown): value is Database {
     'milestones',
     'activities'
   ]
+  if (typeof db.schemaVersion === 'number' && db.schemaVersion >= 2) {
+    arrays.push('proposals', 'claims', 'costItems', 'cashAccounts')
+  }
   return arrays.every((k) => Array.isArray(db[k]))
 }
 
@@ -106,5 +109,6 @@ export function migrateDatabase(raw: unknown, targetVersion: number = CURRENT_SC
     version = step.to
   }
 
+  if (!looksLikeDatabase(db)) return { ok: false, reason: '迁移后的数据文件结构不符合预期' }
   return { ok: true, db, fromVersion: declared }
 }

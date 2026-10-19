@@ -14,6 +14,7 @@
 //    and an inference never overwrites a confirmed fact.
 
 import { canSeeItem, canViewContract, canViewTransaction, effectiveOrgId } from './permissions.ts'
+import { sanitizeHtml } from './sanitize.ts'
 import { NexusError, type Claim, type Database, type DomainEvent, type Transaction, type User } from './types.ts'
 
 export type AgentId = 'legal' | 'finance' | 'ops' | 'main'
@@ -65,6 +66,7 @@ export function visibleClaims(
   asOrgId?: string | null
 ): Claim[] {
   return db.claims.filter((c) => {
+    if (c.supersededById) return false
     if (c.transactionId !== null && c.transactionId !== tx.id) return false
     return canSeeItem(user, tx, { orgId: c.orgId, visibility: c.visibility }, asOrgId)
   })
@@ -106,10 +108,11 @@ export function buildAgentContext(
 
 /** Only a human can turn an inference into a fact. */
 export function canPromote(claim: Claim): boolean {
-  return claim.status !== 'confirmed'
+  return claim.status !== 'confirmed' && !claim.supersededById
 }
 
 export function confirmClaim(claim: Claim, userId: string, at: string): Claim {
+  if (claim.supersededById) throw new NexusError('CONFLICT', '该信息已被替代，请确认最新的信息')
   if (!canPromote(claim)) throw new NexusError('CONFLICT', '该信息已经是已确认事实')
   return { ...claim, status: 'confirmed', confirmedBy: userId, confirmedAt: at, asOf: at }
 }
@@ -153,7 +156,7 @@ export function selectPremises(claims: Claim[]): { premises: Claim[]; excluded: 
   const premises: Claim[] = []
   const excluded: Claim[] = []
   for (const c of claims) {
-    if (c.status === 'confirmed') premises.push(c)
+    if (c.status === 'confirmed' && !c.supersededById) premises.push(c)
     else excluded.push(c)
   }
   return { premises, excluded }
@@ -170,7 +173,7 @@ export function renderContext(ctx: AgentContext): string {
   }
   lines.push('')
   lines.push('## 已确认事实')
-  const { premises, excluded } = selectPremises(ctx.claims)
+  const { premises, excluded } = selectPremises(ctx.claims.filter((c) => !c.supersededById))
   if (premises.length === 0) lines.push('- （无）')
   for (const c of premises) {
     lines.push(`- ${c.label}: ${c.value}${c.unit ? ` ${c.unit}` : ''}  [来源: ${c.source.kind}]`)
@@ -183,7 +186,10 @@ export function renderContext(ctx: AgentContext): string {
   if (ctx.clauses) {
     lines.push('')
     lines.push('## 条款')
-    for (const c of ctx.clauses) lines.push(`- ${c.title}`)
+    for (const c of ctx.clauses) {
+      const body = sanitizeHtml(c.body).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4_000)
+      lines.push(`- [${c.id}] ${c.title}: ${body}`)
+    }
   }
   return lines.join('\n')
 }

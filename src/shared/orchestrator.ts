@@ -11,7 +11,7 @@
 import { buildAgentContext, mergeClaim, renderContext, selectPremises, type AgentId, type AgentContext } from './context.ts'
 import { detectPaymentTermsChange, latestVersionPair } from './events.ts'
 import { describeForecast, forecastCashflow } from './finance.ts'
-import { canViewTransaction, effectiveOrgId } from './permissions.ts'
+import { buildViewState, canSeeItem, canViewContract, canViewTransaction, effectiveOrgId } from './permissions.ts'
 import {
   NexusError,
   type Activity,
@@ -129,7 +129,7 @@ function makeClaim(args: {
 
 function primaryContract(db: Database, tx: Transaction, user: User, asOrgId: string | null): Contract | null {
   return db.contracts
-    .filter((c) => c.transactionId === tx.id && canViewTransaction(user, tx, asOrgId))
+    .filter((c) => c.transactionId === tx.id && canViewContract(user, tx, c, asOrgId))
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0] ?? null
 }
 
@@ -248,7 +248,9 @@ async function runSpecialist(
 }
 
 export async function runOrchestrator(opts: RunOptions): Promise<OrchestrationResult> {
-  const { db, userId, transactionId } = opts
+  // Freeze every input before the first model await, including the version baseline.
+  const db = structuredClone(opts.db)
+  const { userId, transactionId } = opts
   const makeId = opts.makeId ?? uid
   const llm = opts.llm ?? null
   const now = opts.now
@@ -259,9 +261,18 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestrationRe
   if (!tx || !canViewTransaction(user, tx, opts.representingOrgId ?? null)) {
     throw new NexusError('NOT_FOUND', '交易项目不存在或无权访问')
   }
+  if (user.role === 'external_counsel') {
+    throw new NexusError('PERMISSION_DENIED', '企业内部综合分析仅限企业成员运行')
+  }
   const asOrgId = opts.representingOrgId ?? null
   const orgId = effectiveOrgId(user, tx, asOrgId)!
+  const view = buildViewState(db, userId, { representingOrgId: asOrgId })
   const contract = primaryContract(db, tx, user, asOrgId)
+  // Apply the same visibility boundary to event detection and deterministic finance.
+  db.versions = view.versions
+  db.costItems = view.costItems
+  db.cashAccounts = view.cashAccounts
+  const baseVersionId = latestVersionId(db, contract?.id ?? null)
 
   let event: DomainEvent | null = null
   if (opts.event !== undefined) {
@@ -352,7 +363,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestrationRe
           createdAt: now,
           resolvedBy: null,
           resolvedAt: null,
-          baseVersionId: latestVersionId(db, contract?.id ?? null)
+          baseVersionId
         }
       : null
 
@@ -389,6 +400,24 @@ function isStale(db: Database, proposal: Proposal): boolean {
   return latestVersionId(db, proposal.contractId) !== proposal.baseVersionId
 }
 
+function authorizeProposal(db: Database, proposalId: string, userId: string, asOrgId?: string | null): Proposal {
+  const user = db.users.find((u) => u.id === userId)
+  const proposal = db.proposals.find((p) => p.id === proposalId)
+  const tx = proposal && db.transactions.find((t) => t.id === proposal.transactionId)
+  if (!user || !proposal || !tx) throw new NexusError('NOT_FOUND', '建议不存在')
+  if (user.role === 'external_counsel' || effectiveOrgId(user, tx, asOrgId) !== proposal.orgId) {
+    throw new NexusError('PERMISSION_DENIED', '无权处理该企业的内部建议')
+  }
+  if (proposal.contractId) {
+    const contract = db.contracts.find((c) => c.id === proposal.contractId)
+    if (!contract || contract.transactionId !== tx.id || !canViewContract(user, tx, contract, asOrgId)) {
+      throw new NexusError('PERMISSION_DENIED', '无权访问建议关联的合同')
+    }
+  }
+  if (proposal.status !== 'pending') throw new NexusError('CONFLICT', '该建议已处理')
+  return proposal
+}
+
 /**
  * Nothing an agent drafts takes effect on its own. Approval also promotes the claims
  * the draft rests on: that is the moment an inference becomes company memory, and only
@@ -400,16 +429,24 @@ export function approveProposal(args: {
   userId: string
   at: string
   makeId?: (prefix: string) => string
+  representingOrgId?: string | null
 }): ApprovalResult {
   const { db, proposalId, userId, at } = args
   const makeId = args.makeId ?? uid
-  const user = db.users.find((u) => u.id === userId)
-  if (!user) throw new NexusError('NOT_FOUND', '账号不存在')
-  const proposal = db.proposals.find((p) => p.id === proposalId)
-  if (!proposal) throw new NexusError('NOT_FOUND', '建议不存在')
-  const tx = db.transactions.find((t) => t.id === proposal.transactionId)
-  if (!tx || !canViewTransaction(user, tx)) throw new NexusError('NOT_FOUND', '交易项目不存在或无权访问')
-  if (proposal.status !== 'pending') throw new NexusError('CONFLICT', '该建议已处理')
+  const proposal = authorizeProposal(db, proposalId, userId, args.representingOrgId)
+  const user = db.users.find((u) => u.id === userId)!
+  const tx = db.transactions.find((t) => t.id === proposal.transactionId)!
+  // Validate the entire evidence set before mutating any claim or proposal.
+  for (const id of proposal.claimIds) {
+    const claim = db.claims.find((c) => c.id === id)
+    if (!claim || claim.supersededById || claim.orgId !== proposal.orgId ||
+        (claim.transactionId !== null && claim.transactionId !== tx.id)) {
+      throw new NexusError('CONFLICT', '建议依据缺失或已被替代，请重新生成建议')
+    }
+    if (!canSeeItem(user, tx, claim, args.representingOrgId)) {
+      throw new NexusError('PERMISSION_DENIED', '无权确认建议依据')
+    }
+  }
 
   if (isStale(db, proposal)) {
     throw new NexusError('CONFLICT', '合同已在建议生成后被修改，请重新生成建议')
@@ -467,11 +504,8 @@ export function approveProposal(args: {
   return { proposal, claims: promoted, suggestions, activity }
 }
 
-export function rejectProposal(args: { db: Database; proposalId: string; userId: string; at: string }): Proposal {
-  const { db } = args
-  const proposal = db.proposals.find((p) => p.id === args.proposalId)
-  if (!proposal) throw new NexusError('NOT_FOUND', '建议不存在')
-  if (proposal.status !== 'pending') throw new NexusError('CONFLICT', '该建议已处理')
+export function rejectProposal(args: { db: Database; proposalId: string; userId: string; at: string; representingOrgId?: string | null }): Proposal {
+  const proposal = authorizeProposal(args.db, args.proposalId, args.userId, args.representingOrgId)
   proposal.status = 'rejected'
   proposal.resolvedBy = args.userId
   proposal.resolvedAt = args.at
