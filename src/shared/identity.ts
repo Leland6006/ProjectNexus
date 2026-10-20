@@ -19,4 +19,25 @@ export interface IdentityMember {
 export interface IdentityInvitation {
   id: string; email: string; role: IdentityRole; status: string; expiresAt: string; orgId: string; orgName: string
 }
+export type IdentityPartnerStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn' | 'disconnected'
+export interface IdentityPartner {
+  id: string
+  requesterOrgId: string
+  recipientOrgId: string
+  partner: { id: string; name: string; shortName: string }
+  status: IdentityPartnerStatus
+  revision: number
+  createdAt: string
+}
+export interface IdentityPartners { partners: IdentityPartner[] }
+export interface PartnerMessage {
+  id: string
+  relationshipId: string
+  authorId: string
+  orgId: string
+  body: string
+  createdAt: string
+}
+export interface PartnerMessages { messages: PartnerMessage[] }
+
 export type IdentityResult<T = unknown> = { ok: true; data: T } | { ok: false; code: string; message: string }

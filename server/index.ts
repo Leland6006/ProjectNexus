@@ -5,7 +5,8 @@ import { readConfig, type ServerConfig } from './config.ts'
 import { IdentityService } from './auth.ts'
 import { migrate } from './migrations.ts'
 import { HttpError, tenancyRequest } from './tenancy.ts'
-import { businessRequest } from './business.ts'
+import { businessRequest, tenantChangeFingerprint } from './business.ts'
+import { LiveEvents, databaseLiveInspector, tenantDirectoryFingerprint } from './live.ts'
 
 const MAX_BODY = 512 * 1024
 async function readBody(req: IncomingMessage): Promise<unknown> {
@@ -47,6 +48,12 @@ export async function createApi(settings: ServerConfig) {
   try { auth = await IdentityService.connect(settings) }
   catch (error) { await pool.end(); throw error }
   pool.on('error', () => console.error('[api] idle database connection failed'))
+  const live = new LiveEvents(databaseLiveInspector(pool, (client, authorization) => auth.authenticate(client, authorization),
+    async (client, principal, role) => {
+      const business = await tenantChangeFingerprint(client, principal, role)
+      const directory = await tenantDirectoryFingerprint(client, principal.actingOrgId!)
+      return `${business}:${directory}`
+    }))
   const server = createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store')
     res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -61,6 +68,11 @@ export async function createApi(settings: ServerConfig) {
       if (origin && origin !== new URL(settings.publicUrl).origin) throw new HttpError(403, 'ORIGIN_DENIED', '请求来源无权访问')
       throttle(req, url.pathname.startsWith('/auth/'))
       if (method === 'GET' && url.pathname === '/health') { json(res, 200, { ok: true }); return }
+      if (method === 'GET' && url.pathname === '/live') {
+        if (url.search) throw new HttpError(400, 'INVALID_INPUT', '实时连接不接受URL参数')
+        await live.serve(req, res)
+        return
+      }
       if (!['GET', 'POST', 'PATCH', 'DELETE'].includes(method)) throw new HttpError(405, 'METHOD_NOT_ALLOWED', '请求方式不支持')
       const body = method === 'GET' ? {} : await readBody(req)
       client = await pool.connect()
@@ -106,14 +118,15 @@ export async function createApi(settings: ServerConfig) {
   })
   server.requestTimeout = 30_000
   server.headersTimeout = 15_000
-  return { server, pool }
+  server.once('close', () => live.close())
+  return { server, pool, closeLive: () => live.close() }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const settings = readConfig()
-  const { server, pool } = await createApi(settings)
+  const { server, pool, closeLive } = await createApi(settings)
   server.listen(settings.port, settings.host, () => console.info(`[api] listening on ${settings.host}:${settings.port}`))
-  const stop = () => server.close(() => { void pool.end() })
+  const stop = () => { closeLive(); server.close(() => { void pool.end() }) }
   process.once('SIGTERM', stop)
   process.once('SIGINT', stop)
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Bot, CheckCheck, Clock, GitCompare, History, MessageSquare, Save, Share2 } from 'lucide-react'
 import type { Clause } from '@shared/types'
 import { canConfirmFinal, newClause, sortVersionsDesc } from '@shared/editorRules'
+import { sanitizeHtml } from '@shared/sanitize'
 import { AiPanel } from '@/components/AiPanel'
 import { ContractStatusBadge } from '@/components/badges'
 import { ActivityPanel } from '@/components/contract/ActivityPanel'
@@ -10,7 +11,7 @@ import { ClauseOutline } from '@/components/contract/ClauseOutline'
 import { CommentsPanel } from '@/components/contract/CommentsPanel'
 import { SaveVersionDialog, SuggestDialog, VersionsDialog } from '@/components/contract/editorDialogs'
 import { SuggestionsPanel } from '@/components/contract/SuggestionsPanel'
-import { Badge, Button, EmptyState } from '@/components/ui'
+import { Badge, Button, Dialog, EmptyState, Textarea } from '@/components/ui'
 import { cn, formatDateTime } from '@/lib/utils'
 import { accessFor, orgOf } from '@/lib/selectors'
 import { useApp, useView } from '@/store'
@@ -34,6 +35,18 @@ function clauseId(): string {
  */
 export default function ContractEditor({ contractId }: { contractId: string }) {
   const s = useView()
+  const identity = useApp((x) => x.identityStatus)
+  const user = s.users.find((u) => u.id === s.currentUserId)
+  const contextKey = JSON.stringify([contractId, s.currentUserId, user?.orgId, s.representingOrgId, identity?.account?.id, identity?.actingOrgId])
+  return <ContractEditorSession key={contextKey} contractId={contractId} />
+}
+
+function clausesToken(clauses: Clause[]): string {
+  return JSON.stringify(clauses.map(({ id, title, body }) => [id, title, body]))
+}
+
+function ContractEditorSession({ contractId }: { contractId: string }) {
+  const s = useView()
   const act = useApp((x) => x.act)
   const busy = useApp((x) => x.busy)
   const navigate = useApp((x) => x.navigate)
@@ -42,23 +55,32 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
   const contract = s.contracts.find((c) => c.id === contractId)
   const tx = contract && s.transactions.find((t) => t.id === contract.transactionId)
 
-  const [draft, setDraft] = useState<Clause[]>(contract?.clauses ?? [])
+  const [draft, setDraft] = useState<Clause[]>(() => structuredClone(contract?.clauses ?? []))
   const [dirty, setDirty] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(contract?.clauses[0]?.id ?? null)
   const [tab, setTab] = useState<RightTab>('comments')
   const [showVersions, setShowVersions] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
   const [suggestFor, setSuggestFor] = useState<string | null>(null)
-  const serverClauses = useRef(contract?.clauses)
+  const [baseClauses, setBaseClauses] = useState<Clause[]>(() => structuredClone(contract?.clauses ?? []))
+  const [saveFailed, setSaveFailed] = useState(false)
+  const [copyOpen, setCopyOpen] = useState(false)
+  const editRevision = useRef(0)
+  const saving = useRef(false)
+  const mounted = useRef(true)
 
-  // Adopt server changes (accept suggestion, restore, switch account) unless the user has unsaved edits.
   useEffect(() => {
-    if (!contract) return
-    if (contract.clauses !== serverClauses.current) {
-      serverClauses.current = contract.clauses
-      if (!dirty) setDraft(contract.clauses)
-    }
-  }, [contract, dirty])
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
+
+  // 未保存时保留开始编辑的快照，轮询结果只能更新远端视图。
+  useEffect(() => {
+    if (!contract || dirty || saving.current) return
+    setDraft(structuredClone(contract.clauses))
+    setBaseClauses(structuredClone(contract.clauses))
+    setSaveFailed(false)
+  }, [contract?.clauses, dirty])
 
   // Warn about leaving with unsaved edits.
   useEffect(() => {
@@ -85,15 +107,61 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
   const iConfirmed = a.orgId ? contract.finalConfirmedBy.includes(a.orgId) : false
   const isOtherParty = (orgId: string): boolean => orgId !== a.orgId
 
-  const updateClause = (id: string, patch: Partial<Clause>): void => {
-    setDraft((d) => d.map((c) => (c.id === id ? { ...c, ...patch } : c)))
+  const remoteChanged = dirty && clausesToken(contract.clauses) !== clausesToken(baseClauses)
+
+  const markEdited = (): void => {
+    ++editRevision.current
     setDirty(true)
   }
 
+  const updateClause = (id: string, patch: Partial<Clause>): void => {
+    markEdited()
+    setDraft((d) => d.map((c) => (c.id === id ? { ...c, ...patch } : c)))
+  }
+
   const saveDraft = async (): Promise<boolean> => {
-    const ok = await act('updateClauses', [contract.id, draft], '草稿已保存')
-    if (ok) setDirty(false)
-    return ok
+    if (saving.current) return false
+    const revision = editRevision.current
+    const submitted = structuredClone(draft)
+    saving.current = true
+    const ok = await act('updateClauses', [contract.id, submitted, structuredClone(baseClauses)], '草稿已保存')
+    saving.current = false
+    if (!mounted.current) return false
+    if (!ok) {
+      setSaveFailed(true)
+      await act('getState', [])
+      return false
+    }
+    const saved = submitted.map(({ id, title, body }) => ({ id: id.trim(), title: title.trim(), body: sanitizeHtml(body).slice(0, 100_000) }))
+    setBaseClauses(saved)
+    setSaveFailed(false)
+    if (editRevision.current !== revision) {
+      toast('info', '已保存提交时的内容，保存期间的新修改仍保留在本地，请再次保存。')
+      return false
+    }
+    setDraft(saved)
+    setDirty(false)
+    return true
+  }
+
+  const reloadRemote = async (): Promise<void> => {
+    if (saving.current || (dirty && !window.confirm('重新载入会放弃本地未保存内容。建议先复制本地内容，确定继续吗？'))) return
+    const revision = editRevision.current
+    if (!(await act('getState', [])) || !mounted.current) return
+    if (revision !== editRevision.current) {
+      toast('info', '载入期间又有本地修改，已保留；请复制内容后重新载入。')
+      return
+    }
+    const latestContract = useApp.getState().state?.contracts.find((c) => c.id === contract.id)
+    if (!latestContract) return
+    const clauses = structuredClone(latestContract.clauses)
+    setDraft(clauses)
+    setBaseClauses(structuredClone(clauses))
+    setActiveId(clauses[0]?.id ?? null)
+    setDirty(false)
+    setSaveFailed(false)
+    setCopyOpen(false)
+    ++editRevision.current
   }
 
   const goBack = (): void => {
@@ -164,6 +232,15 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
         </div>
       </div>
 
+      {dirty && (
+        <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-900" role="status">
+          <span>{remoteChanged ? '远端合同条款已修改。已保留本地草稿；请复制本地内容，再重新载入最新条款后编辑。' : saveFailed ? '保存未完成，本地草稿已保留。若远端已修改，请复制内容后重新载入。' : '本地修改尚未保存，可先复制留存。'}</span>
+          <div className="flex shrink-0 gap-2">
+            <Button size="sm" onClick={() => setCopyOpen(true)}>复制本地内容</Button>
+            <Button size="sm" loading={busy} onClick={() => void reloadRemote()}>重新载入最新条款</Button>
+          </div>
+        </div>
+      )}
       {locked && <div className="border-b border-emerald-200 bg-emerald-50 px-5 py-2 text-xs text-emerald-800">双方已确认最终版本，合同内容已锁定，不能再修改。</div>}
       {!canEdit && !locked && (
         <div className="border-b border-blue-200 bg-blue-50 px-5 py-2 text-xs text-blue-800">
@@ -180,8 +257,8 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
           onSelect={setActiveId}
           onAdd={() => {
             const clause = newClause(draft, clauseId)
+            markEdited()
             setDraft((d) => [...d, clause])
-            setDirty(true)
             setActiveId(clause.id)
           }}
         />
@@ -194,8 +271,8 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
           onChange={updateClause}
           onDelete={(c) => {
             if (!window.confirm(`确定删除「${c.title}」吗？（保存前可通过刷新恢复）`)) return
+            markEdited()
             setDraft((d) => d.filter((x) => x.id !== c.id))
-            setDirty(true)
             setActiveId(null)
           }}
         />
@@ -237,6 +314,12 @@ export default function ContractEditor({ contractId }: { contractId: string }) {
         </aside>
       </div>
 
+      {copyOpen && (
+        <Dialog open onClose={() => setCopyOpen(false)} title="复制本地未保存内容">
+          <p className="mb-3 text-sm text-ink-600">点击下方内容并按 Ctrl+C（macOS 为 ⌘C）复制。包含条款标题与正文 HTML，可用于对照恢复本地修改。</p>
+          <Textarea readOnly autoFocus aria-label="本地草稿内容" className="min-h-72" value={draft.map((c) => `${c.title}\n${c.body}`).join('\n\n')} onFocus={(event) => event.currentTarget.select()} onClick={(event) => event.currentTarget.select()} />
+        </Dialog>
+      )}
       {saveOpen && (
         <SaveVersionDialog
           onClose={() => setSaveOpen(false)}

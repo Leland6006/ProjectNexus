@@ -103,11 +103,11 @@ export class IdentityService {
   async authenticate(db: PoolClient, bearer: string | undefined): Promise<Principal> {
     const token = bearer?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1]
     if (!token) throw new HttpError(401, 'UNAUTHENTICATED', '请先登录')
-    // Serialize a user's session operations before locking any individual session.
-    // Otherwise two devices revoking each other can each hold their own row and deadlock.
+    // 先串行化同一用户的会话操作，再锁单个会话，防止两台设备互相撤销时死锁。
+    // 此事务不修改身份主键；非键更新锁保持互斥，同时允许业务外键的 KEY SHARE 检查。
     const owner = await db.query<{ user_id: string }>('SELECT user_id FROM sessions WHERE token_hash=$1', [digest(token)])
     if (!owner.rows[0]) throw new HttpError(401, 'SESSION_EXPIRED', '会话已失效，请重新登录')
-    await db.query('SELECT id FROM identities WHERE id=$1 FOR UPDATE', [owner.rows[0].user_id])
+    await db.query('SELECT id FROM identities WHERE id=$1 FOR NO KEY UPDATE', [owner.rows[0].user_id])
     const result = await db.query<SessionRow>(`SELECT s.*,i.email,i.name,i.oidc_sub,i.status FROM sessions s
       JOIN identities i ON i.id=s.user_id WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>now() FOR UPDATE OF s`, [digest(token)])
     const row = result.rows[0]

@@ -5,9 +5,11 @@ import { API_METHODS } from '../shared/api.ts'
 import { createSession, handleCall, type Session } from './handlers.ts'
 import { JsonStore } from './store.ts'
 import { IdentityBridge } from './identity.ts'
+import { LiveSync } from './live.ts'
 
 let store: JsonStore
 let session: Session
+let live: LiveSync | undefined
 
 function rendererUrl(): string {
   return process.env.ELECTRON_RENDERER_URL ?? pathToFileURL(join(__dirname, '../renderer/index.html')).href
@@ -43,6 +45,8 @@ function createWindow(): void {
   })
 
   win.once('ready-to-show', () => win.show())
+  win.webContents.once('did-finish-load', () => live?.start())
+  win.once('closed', () => { if (BrowserWindow.getAllWindows().length === 0) live?.stop() })
 
   // Never let the app window navigate away or open new windows; send http(s) links to the OS browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -88,6 +92,12 @@ app.whenReady().then(() => {
   // Packaged builds can never enable demo mode, even via a modified environment.
   const demo = !app.isPackaged && process.env.NEXUS_MODE === 'demo'
   const identity = new IdentityBridge(process.env.NEXUS_API_URL, !app.isPackaged, (url) => shell.openExternal(url))
+  if (!demo) live = new LiveSync(identity, () => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed() && !win.webContents.isDestroyed() &&
+        win.webContents.getURL().split('#')[0] === rendererUrl().split('#')[0]) win.webContents.send('nexus:invalidate')
+    }
+  })
   if (demo) {
     store = new JsonStore(join(app.getPath('userData'), 'demo'))
     const loaded = store.load()
@@ -112,7 +122,7 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('before-quit', () => store?.flush())
+app.on('before-quit', () => { live?.stop(); store?.flush() })
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

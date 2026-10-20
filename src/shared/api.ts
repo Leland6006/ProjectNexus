@@ -38,6 +38,7 @@ export type ApiResult = { ok: true; state: ViewState } | { ok: false; code: stri
 
 export interface NexusBridge {
   call(method: ApiMethod, ...args: unknown[]): Promise<ApiResult>
+  onInvalidate(listener: () => void): () => void
   mode(): Promise<'demo' | 'server'>
   identity(action: string, body?: unknown): Promise<IdentityResult>
 }

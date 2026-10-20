@@ -5,6 +5,8 @@ import { test, type TestContext } from 'node:test'
 import { PGlite } from '@electric-sql/pglite'
 import type { PoolClient } from 'pg'
 import { AUTH_SCHEMA, IdentityService } from '../server/auth.ts'
+import { PARTNER_SCHEMA } from '../server/partnerSchema.ts'
+import { BUSINESS_SCHEMA, BUSINESS_TABLES } from '../server/businessSchema.ts'
 import { businessRequest } from '../server/business.ts'
 import { HttpError, tenancyRequest, type MembershipRole, type Principal } from '../server/tenancy.ts'
 import type { ViewState } from '../src/shared/types.ts'
@@ -25,6 +27,8 @@ async function fixture(t: TestContext) {
   t.after(() => db.close())
   await db.exec(await readFile(new URL('../server/schema.sql', import.meta.url), 'utf8'))
   await db.exec(AUTH_SCHEMA)
+  await db.exec(PARTNER_SCHEMA)
+  await db.exec(BUSINESS_SCHEMA)
   const accounts: Principal[] = []
   for (const [index, name] of ['测试甲', '测试乙', '测试丙'].entries()) {
     const userId = randomUUID()
@@ -64,7 +68,21 @@ async function fixture(t: TestContext) {
     const result = await db.query<{ id: string }>('SELECT id FROM memberships WHERE user_id=$1 AND org_id=$2', [person.userId, owner.actingOrgId])
     return result.rows[0].id
   }
-  return { db, alice, bob, charlie, tenancy, business, company, select, invite, join }
+  const partner = async (requester: Principal, recipient: Principal) => {
+    const result = await tenancy<{ relationship: { id: string } }>(requester, 'POST', '/partners', { orgId: recipient.actingOrgId })
+    await tenancy(recipient, 'POST', `/partners/${result.relationship.id}/accept`)
+    return result.relationship.id
+  }
+  return { db, alice, bob, charlie, tenancy, business, company, select, invite, join, partner }
+}
+
+async function persistedSnapshot(db: PGlite) {
+  const entities: Record<string, unknown> = {}
+  for (const table of Object.values(BUSINESS_TABLES)) {
+    entities[table] = (await db.query(`SELECT id,payload FROM ${table} ORDER BY id`)).rows
+  }
+  entities.audit = (await db.query('SELECT * FROM audit ORDER BY id')).rows
+  return entities
 }
 
 async function rejectsHttp(request: Promise<unknown>, status: number, code: string) {
@@ -210,15 +228,16 @@ test('PostgreSQL：所有者不可直接降级移除，管理员不能改所有�
 })
 
 test('PostgreSQL：角色变更和移除立即撤销旧 Principal 写权限，重新邀请复用成员', async (t) => {
-  const { db, alice, bob, charlie, tenancy, business, company, join, invite, select } = await fixture(t)
+  const { db, alice, bob, charlie, tenancy, business, company, join, invite, select, partner } = await fixture(t)
   const orgId = await company(alice, '动态权限测试企业')
   const otherOrg = await company(charlie, '动态权限交易对方')
+  await partner(alice, charlie)
   const membershipId = await join(alice, bob)
   const stalePrincipal = { ...bob }
   const created = await business(bob, 'createTransaction', transactionInput(otherOrg))
   const txId = created.transactions[0].id
   await tenancy(alice, 'PATCH', `/members/${membershipId}`, { role: 'readonly' })
-  const beforeDenied = await db.query<{ revision: number }>("SELECT revision::integer AS revision FROM business_state WHERE id='singleton'")
+  const beforeDenied = await persistedSnapshot(db)
   assert.equal((await business(stalePrincipal)).transactions[0].id, txId)
   for (const [method, args] of [
     ['updateTransaction', [txId, { name: '越权修改' }]],
@@ -226,8 +245,7 @@ test('PostgreSQL：角色变更和移除立即撤销旧 Principal 写权限，�
     ['createMilestone', [{ transactionId: txId, name: '越权节点', responsibleOrgId: orgId, dueDate: '2026-12-01' }]],
     ['switchUser', [alice.userId]], ['resetDemo', []]
   ] as const) await rejectsHttp(business(stalePrincipal, method, ...args), 403, 'PERMISSION_DENIED')
-  const afterDenied = await db.query<{ revision: number }>("SELECT revision::integer AS revision FROM business_state WHERE id='singleton'")
-  assert.equal(afterDenied.rows[0].revision, beforeDenied.rows[0].revision)
+  assert.deepEqual(await persistedSnapshot(db), beforeDenied)
   await tenancy(alice, 'DELETE', `/members/${membershipId}`)
   await rejectsHttp(business(stalePrincipal), 403, 'MEMBERSHIP_REQUIRED')
   await rejectsHttp(business(stalePrincipal, 'updateTransaction', txId, { name: '移除后写入' }), 403, 'MEMBERSHIP_REQUIRED')
@@ -244,10 +262,11 @@ test('PostgreSQL：角色变更和移除立即撤销旧 Principal 写权限，�
 })
 
 test('PostgreSQL：跨交易读写隔离且业务快照不保存身份和企业目录', async (t) => {
-  const { db, alice, bob, charlie, business, company, select } = await fixture(t)
+  const { db, alice, bob, charlie, business, company, select, partner } = await fixture(t)
   const orgA = await company(alice, '交易发起企业')
   const orgB = await company(bob, '交易对方企业')
   const orgC = await company(charlie, '无关第三方企业')
+  await partner(alice, bob)
   const result = await business(alice, 'createTransaction', transactionInput(orgB))
   const txId = result.transactions[0].id
   const contractState = await business(alice, 'createContract', txId, '未共享合同')
@@ -273,27 +292,85 @@ test('PostgreSQL：跨交易读写隔离且业务快照不保存身份和企业�
   await rejectsHttp(business(alice, 'updateTransaction', txId, { name: '跨当前企业修改' }), 404, 'NOT_FOUND')
   await select(alice, orgA)
   assert.equal((await business(alice)).transactions[0].name, '真实数据库测试交易')
-  const persisted = await db.query<{ payload: Record<string, unknown> }>("SELECT payload FROM business_state WHERE id='singleton'")
-  const payload = persisted.rows[0].payload
-  for (const key of ['users', 'organizations', 'identities', 'memberships', 'sessions']) assert.equal(key in payload, false, key)
-  assert.equal(JSON.stringify(payload).includes(alice.email), false)
+  const legacy = await db.query<{ name: string | null }>("SELECT to_regclass('business_state')::text AS name")
+  assert.equal(legacy.rows[0].name, null)
+  for (const table of Object.values(BUSINESS_TABLES)) {
+    const persisted = await db.query<{ payload: Record<string, unknown> }>(`SELECT payload FROM ${table}`)
+    for (const { payload } of persisted.rows) {
+      for (const key of ['users', 'organizations', 'identities', 'memberships', 'sessions']) assert.equal(key in payload, false, key)
+      assert.equal(JSON.stringify(payload).includes(alice.email), false)
+    }
+  }
   assert.notEqual(orgA2, orgA)
 })
 
+test('PostgreSQL：两个企业真实共享合同、协商并确认，陈旧草稿不覆盖新条款', async (t) => {
+  const { db, alice, bob, charlie, tenancy, business, company, partner } = await fixture(t)
+  const orgA = await company(alice, '协作甲企业')
+  const orgB = await company(bob, '协作乙企业')
+  await company(charlie, '隔离丙企业')
+  const relationshipId = await partner(alice, bob)
+  await tenancy(alice, 'POST', `/partners/${relationshipId}/messages`, { body: '第一条企业间消息' })
+  const inbox = await tenancy<{ messages: { body: string; orgId: string }[] }>(bob, 'GET', `/partners/${relationshipId}/messages`)
+  assert.equal(inbox.messages[0].body, '第一条企业间消息')
+  assert.equal(inbox.messages[0].orgId, orgA)
+  await rejectsHttp(tenancy(charlie, 'GET', `/partners/${relationshipId}/messages`), 404, 'NOT_FOUND')
+  const created = await business(alice, 'createTransaction', transactionInput(orgB))
+  const txId = created.transactions[0].id
+  await business(alice, 'inviteCounterparty', txId)
+  await business(bob, 'acceptInvitation', txId)
+  const initial = await business(alice, 'createContract', txId, '双方协作合同')
+  const contractId = initial.contracts[0].id
+  const staleBase = structuredClone(initial.contracts[0].clauses)
+  assert.deepEqual((await business(bob)).contracts, [])
+  await business(alice, 'addComment', contractId, staleBase[0].id, '共享前内部评论', 'internal')
+  await business(alice, 'shareContract', contractId)
+  assert.equal((await business(bob)).contracts[0].id, contractId)
+  assert.deepEqual((await business(bob)).comments, [])
+  await business(bob, 'sendMessage', txId, '交易共享消息', 'shared')
+  assert.ok((await business(alice)).messages.some((m) => m.body === '交易共享消息'))
+  const suggested = await business(bob, 'createSuggestion', contractId, staleBase[0].id, '<p>双方协商后的新条款</p>', '共同确认')
+  const suggestionId = suggested.suggestions[0].id
+  await business(alice, 'resolveSuggestion', suggestionId, true)
+  const beforeConflict = await persistedSnapshot(db)
+  await rejectsHttp(business(alice, 'updateClauses', contractId, staleBase, staleBase), 409, 'CONFLICT')
+  await rejectsHttp(business(alice, 'updateClauses', contractId, staleBase), 400, 'INVALID_INPUT')
+  const fresh = await business(alice)
+  assert.match(fresh.contracts[0].clauses[0].body, /双方协商后的新条款/)
+  assert.deepEqual(await persistedSnapshot(db), beforeConflict)
+  const latest = fresh.versions.filter((v) => v.contractId === contractId).sort((a, b) => b.number - a.number)[0]
+  await business(alice, 'confirmFinal', contractId, latest.id)
+  const finalized = await business(bob, 'confirmFinal', contractId, latest.id)
+  assert.equal(finalized.contracts[0].status, 'finalized')
+  assert.deepEqual(new Set(finalized.contracts[0].finalConfirmedBy), new Set([orgA, orgB]))
+  assert.deepEqual((await business(charlie)).contracts, [])
+  await rejectsHttp(business(charlie, 'shareContract', contractId), 404, 'NOT_FOUND')
+  await tenancy(alice, 'POST', `/partners/${relationshipId}/disconnect`)
+  await rejectsHttp(tenancy(bob, 'POST', `/partners/${relationshipId}/messages`, { body: '断开后不能新发' }), 409, 'PARTNER_UNAVAILABLE')
+  assert.equal((await business(bob)).contracts[0].status, 'finalized')
+})
+
 test('PostgreSQL：财务可写履约但不能改合同或交易，法务和只读看不到财务集合', async (t) => {
-  const { db, alice, bob, charlie, tenancy, business, company, join } = await fixture(t)
+  const { db, alice, bob, charlie, tenancy, business, company, join, partner } = await fixture(t)
   const orgId = await company(alice, '财务权限企业')
   const counterparty = await company(charlie, '财务权限交易对方')
+  await partner(alice, charlie)
   const memberId = await join(alice, bob, 'finance')
   const state = await business(alice, 'createTransaction', transactionInput(counterparty))
   const txId = state.transactions[0].id
-  const snapshot = await db.query<{ payload: Record<string, unknown> }>("SELECT payload FROM business_state WHERE id='singleton'")
-  const payload = snapshot.rows[0].payload
+  const payload: Record<string, unknown[]> = {}
   payload.cashAccounts = [{ id: 'cash-a', orgId, label: '内部现金', openingBalance: 900, asOf: '2026-10-20' }, { id: 'cash-other', orgId: counterparty, label: '对方现金', openingBalance: 100, asOf: '2026-10-20' }]
   payload.costItems = [{ id: 'cost-a', transactionId: txId, orgId, name: '内部成本', amount: 100, dueDate: '2026-12-01', status: 'committed', visibility: 'internal', createdBy: alice.userId, createdAt: '2026-10-20' }]
   payload.claims = [{ id: 'claim-a', orgId, transactionId: txId, key: 'cash.test', label: '内部现金信息', value: '900', numeric: 900, unit: '元', status: 'inferred', source: { kind: 'ledger' }, asOf: '2026-10-20', visibility: 'internal', supersededById: null, confirmedBy: null, confirmedAt: null }]
   payload.proposals = [{ id: 'proposal-a', transactionId: txId, contractId: null, orgId, title: '内部财务建议', rationale: '现金900', actions: [], claimIds: ['claim-a'], eventId: null, status: 'pending', createdBy: alice.userId, createdAt: '2026-10-20', resolvedBy: null, resolvedAt: null, baseVersionId: null }]
-  await db.query("UPDATE business_state SET payload=$1 WHERE id='singleton'", [JSON.stringify(payload)])
+  await db.transaction(async (tx) => {
+    for (const key of ['cashAccounts', 'costItems', 'claims', 'proposals'] as const) {
+      for (const entity of payload[key] as { id: string }[]) {
+        await tx.query(`INSERT INTO ${BUSINESS_TABLES[key]}(id,payload) VALUES($1,$2::jsonb)`, [entity.id, JSON.stringify(entity)])
+      }
+    }
+    await tx.query('INSERT INTO business_proposal_claims(proposal_id,claim_id,org_id) VALUES($1,$2,$3)', ['proposal-a', 'claim-a', orgId])
+  })
   const finance = await business(bob)
   assert.deepEqual(finance.cashAccounts.map((a) => a.id), ['cash-a'])
   for (const key of ['costItems', 'claims', 'proposals'] as const) assert.equal(finance[key].length, 1)

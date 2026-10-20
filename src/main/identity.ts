@@ -23,6 +23,25 @@ export class IdentityBridge {
   private readonly configError: boolean
   private pendingLogin = false
   private epoch = 0
+  private liveContext = ''
+  private livePaused = 0
+  private readonly liveListeners = new Set<() => void>()
+  onLiveContextChange(listener: () => void): () => void {
+    this.liveListeners.add(listener)
+    return () => { this.liveListeners.delete(listener) }
+  }
+  private notifyLive(): void { for (const listener of this.liveListeners) listener() }
+  private clearLive(): void { this.liveContext = ''; this.notifyLive() }
+  async openLive(signal: AbortSignal): Promise<Response | null> {
+    if (!this.endpoint || !this.token || !this.liveContext || this.livePaused) return null
+    const epoch = this.epoch
+    const token = this.token
+    const response = await fetch(`${this.endpoint}/live`, {
+      headers: { Accept: 'text/event-stream', Authorization: `Bearer ${token}` }, signal, redirect: 'error'
+    })
+    if (signal.aborted || epoch !== this.epoch || token !== this.token) { await response.body?.cancel(); return null }
+    return response
+  }
   constructor(endpoint: string | undefined, development: boolean, openExternal: OpenExternal) {
     this.development = development
     let configuredEndpoint: string | null = null
@@ -45,7 +64,7 @@ export class IdentityBridge {
       })
       const result = await response.json() as IdentityResult
       if (authenticated && response.status === 401 && epoch === this.epoch && requestToken === this.token) {
-        this.token = null; this.epoch++
+        this.token = null; this.epoch++; this.clearLive()
       }
       if (!result || typeof result.ok !== 'boolean') throw new Error('Invalid API response')
       return result
@@ -67,8 +86,15 @@ export class IdentityBridge {
   private async status(): Promise<IdentityResult> {
     if (this.configError) return { ok: false, code: 'INVALID_CONFIG', message: '身份服务地址配置无效，请联系部署管理员' }
     if (!this.token) return { ok: true, data: signedOut(!!this.endpoint) }
+    const epoch = this.epoch
     const result = await this.request('/me')
     if (!result.ok && ['UNAUTHENTICATED', 'SESSION_EXPIRED', 'ACCOUNT_DISABLED'].includes(result.code)) return { ok: true, data: signedOut(!!this.endpoint) }
+    if (result.ok && epoch === this.epoch && !this.livePaused) {
+      const status = result.data as IdentityStatus
+      const company = status.companies?.find((item) => item.id === status.actingOrgId)
+      const next = status.account && company ? JSON.stringify([status.account.id, company.id, company.role]) : ''
+      if (next !== this.liveContext) { this.liveContext = next; this.notifyLive() }
+    }
     return result.ok ? { ok: true, data: { ...(result.data as object), configured: true } } : result
   }
   private async login(intent: string): Promise<IdentityResult> {
@@ -99,6 +125,17 @@ export class IdentityBridge {
     finally { this.pendingLogin = false }
   }
   async identity(action: unknown, input?: unknown): Promise<IdentityResult> {
+    const changesContext = typeof action === 'string' && ['login', 'register', 'recover', 'logout', 'revoke-all', 'select-company', 'create-company', 'accept-invitation'].includes(action)
+    if (changesContext) { this.livePaused++; this.epoch++; this.clearLive() }
+    try { return await this.performIdentity(action, input) }
+    finally {
+      if (changesContext) {
+        this.livePaused--
+        this.notifyLive()
+      }
+    }
+  }
+  private async performIdentity(action: unknown, input?: unknown): Promise<IdentityResult> {
     if (typeof action !== 'string') return { ok: false, code: 'INVALID_INPUT', message: '身份操作无效' }
     const body = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {}
     const id = typeof body.id === 'string' ? encodeURIComponent(body.id) : ''
@@ -135,6 +172,14 @@ export class IdentityBridge {
         const result = await this.request(`/${action}`)
         return result.ok ? { ok: true, data: (result.data as Record<string, unknown>)[action === 'members' ? 'members' : 'invitations'] } : result
       }
+      case 'partners': return this.request('/partners')
+      case 'create-partner': return this.request('/partners', 'POST', { orgId: body.orgId })
+      case 'partner-messages':
+        return id ? this.request(`/partners/${id}/messages`) : { ok: false, code: 'INVALID_INPUT', message: '缺少合作关系标识' }
+      case 'send-partner-message':
+        return id ? this.request(`/partners/${id}/messages`, 'POST', { body: body.body }) : { ok: false, code: 'INVALID_INPUT', message: '缺少合作关系标识' }
+      case 'accept-partner': case 'reject-partner': case 'withdraw-partner': case 'disconnect-partner':
+        return id ? this.request(`/partners/${id}/${action.slice(0, -'-partner'.length)}`, 'POST', {}) : { ok: false, code: 'INVALID_INPUT', message: '缺少合作关系标识' }
       case 'invite': return this.request('/invitations', 'POST', body)
       case 'accept-invitation': case 'withdraw-invitation':
         return id ? this.request(`/invitations/${id}/${action === 'accept-invitation' ? 'accept' : 'withdraw'}`, 'POST', {}) : { ok: false, code: 'INVALID_INPUT', message: '缺少邀请标识' }

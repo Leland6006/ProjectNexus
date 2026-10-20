@@ -169,8 +169,10 @@ export async function handleCall(session: Session, method: unknown, args: unknow
         s.shareContract(me, str(args[0]))
         break
       case 'updateClauses':
-        if (!Array.isArray(args[1])) throw new NexusError('INVALID_INPUT', '参数无效')
-        s.updateClauses(me, str(args[0]), args[1])
+        if (!Array.isArray(args[1]) || (args[2] !== undefined && !Array.isArray(args[2]))) {
+          throw new NexusError('INVALID_INPUT', '条款或基础快照无效')
+        }
+        s.updateClauses(me, str(args[0]), args[1], args[2])
         break
       case 'updatePaymentTerms': {
         const raw = args[1] === null || args[1] === undefined ? null : obj<PaymentTerms>(args[1])

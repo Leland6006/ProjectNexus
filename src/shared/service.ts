@@ -83,6 +83,14 @@ function sanitizeClauses(clauses: Clause[]): Clause[] {
   }))
 }
 
+function clauseToken(clauses: Clause[]): string {
+  if (!Array.isArray(clauses) || clauses.length === 0 || clauses.length > 200 || clauses.some((clause) =>
+    !clause || typeof clause.id !== 'string' || typeof clause.title !== 'string' || typeof clause.body !== 'string' ||
+    clause.id.length > 64 || clause.title.length > 120 || clause.body.length > 100_000
+  )) throw new NexusError('INVALID_INPUT', '条款基础快照无效，请重新载入合同')
+  return JSON.stringify(clauses.map(({ id, title, body }) => [id, title, body]))
+}
+
 /**
  * Mutable actor state shared with the session. An external counsel may be granted
  * access by both parties; this records which one they are currently acting for so every
@@ -344,11 +352,14 @@ export class NexusService {
   }
 
   /** Replace the clause set of the working draft (owner organisation only). */
-  updateClauses(actorId: string, contractId: string, clauses: Clause[]): Contract {
+  updateClauses(actorId: string, contractId: string, clauses: Clause[], baseClauses?: Clause[]): Contract {
     const actor = this.user(actorId)
     const { contract, tx } = this.contract(actor, contractId)
     this.requireOwner(actor, tx)
     this.requireEditable(contract)
+    if (baseClauses !== undefined && clauseToken(baseClauses) !== clauseToken(contract.clauses)) {
+      throw new NexusError('CONFLICT', '远端合同条款已修改，本地草稿尚未保存。请先复制本地内容，再重新载入最新条款后编辑。')
+    }
     contract.clauses = sanitizeClauses(clauses)
     contract.updatedAt = this.clock.now()
     this.commit()

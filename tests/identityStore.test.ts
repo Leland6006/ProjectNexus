@@ -51,6 +51,7 @@ const settle = async () => { for (let index = 0; index < 8; index++) await Promi
 function harness(overrides: Partial<NexusBridge> = {}) {
   const bridge: NexusBridge = {
     mode: async () => 'server',
+    onInvalidate: () => () => {},
     identity: async () => ({ ok: true, data: status() }),
     call: async () => ({ ok: true, state: view }),
     ...overrides

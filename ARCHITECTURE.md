@@ -112,6 +112,14 @@ Renderer -> Preload -> Electron Main (内存令牌)
 
 服务端从 `server/config.ts` 读取数据库、OIDC、回调、账号页和会话加密配置。登录 token 只在 Electron Main 进程内存中；进程重启会要求重新登录。服务器基于数据库中的身份、会话、成员关系和每次请求时的企业角色执行授权，不能信任 renderer 提交的 user/org/role 字段。
 
-当前业务数据用 PostgreSQL `business_state` 表中的单行 JSONB 全局快照保存，服务端以事务锁串行化请求；身份和企业权限目录保存在独立关系表，业务 JSON 快照剥离 users/organizations。它不是按组织分区的交易关系模型，不能作为生产多租户架构或扩展性保证。
+服务端业务存储通过 `003_scoped_business_storage` 从全局 `business_state` 迁为 12 类独立实体表：交易、合同、版本、评论、建议、交易消息、节点、活动、成本、现金账户、claims 和 proposals。各表保存单个实体 JSONB payload，以生成列、SQL 外键和索引表达身份、企业和交易关系；律师授权和方案依据另有桥表。迁移校验旧快照版本、完整集合、外键及跨交易/企业引用，失败整事务回滚，成功才删除旧表；不会隐式导入演示数据。
 
-`npm test` 使用 PGlite 在 Node 进程内运行 PostgreSQL WASM；可验证真实 schema、SQL、事务回滚和授权逻辑，但不是独立 PostgreSQL 部署验证，也不覆盖多连接竞争、OIDC/SMTP 网络流程、浏览器回调、生产持久化或双设备验收。Docker/Keycloak 端到端和 6B-D 验收仍待执行。
+`businessStorage.ts` 先锁当前企业的独立业务 scope，再按交易 ID 顺序锁其拥有或已获邀的交易。读取用共享锁，写入用排他锁；同企业不同交易仍会串行。SQL 只加载当前企业作用域内的交易实体、自有现金账户、公司信息和自有 proposals，授权视图继续隐藏对方内部内容。服务端对完整的已加载模型做按 ID/payload 的差异保存，避免将 renderer 裁剪后的视图覆写成数据库真值，也不会删除未加载实体或全库重建。该隔离依赖 API 和作用域 SQL，没有启用 PostgreSQL RLS。
+
+企业合作关系独立于交易，双方确认后才能创建新交易。规范化企业对行锁协调交叉申请、消息和断开操作；交易创建持有 accepted 关系共享锁直至提交。消息作者与所属企业取自服务端 principal，拒绝客户端伪造字段；审计仅保留动作和关系 ID，不保存消息正文。004 迁移在同一事务内锁表、核验历史消息归属并建立触发器，约束消息企业必须属于关系双方，禁止修改关系的 requester/recipient，发现历史脏数据则完整回滚。断开后禁止新交易和新伙伴消息，保留历史消息及已有交易、合同权限。
+
+合同直接编辑使用条款内容快照 CAS：客户端提交开始编辑时的有序 `[id,title,body]`，服务端在赋值前比较当前条款，不一致返回 409。dirty 编辑器不随后台刷新更新 base，失败保留草稿，保存期间续写仍保留为未保存修改。该比较允许内容恢复原样的 ABA，不是递增版本门禁或自动合并。
+
+`npm test` 使用 PGlite 在 Node 进程内运行 PostgreSQL WASM；验证真实 schema、SQL、事务回滚和授权逻辑。恢复专项另用磁盘数据目录验证重启、压缩备份、恢复到新目录和恢复后的继续写入；这不等同于独立 PostgreSQL 或 `pg_dump` 验收。多连接竞争、OIDC/SMTP 网络流程、浏览器回调、生产持久化和双设备验收仍待执行。
+
+实时同步通过认证 SSE 发送不含业务正文的 `invalidate` 信号，由 Electron main 持有认证头并管理断线重连，preload 仅暴露失效订阅。renderer 收到信号后重新请求身份与授权业务视图；合同编辑器保留正在编辑的草稿。服务端以 REPEATABLE READ 短事务在一致快照中重新验证会话、成员和角色并读取可见内容摘要；目录摘要不采用全企业 audit 数量，避免不可见业务操作产生刷新信号。权限上下文变化时关闭旧流，不维护全平台 revision，也未使用 PostgreSQL LISTEN/NOTIFY。客户端保留 30 秒及窗口 focus 刷新作为补偿。

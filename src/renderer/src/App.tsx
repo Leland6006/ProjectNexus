@@ -13,7 +13,7 @@ import Performance from './pages/Performance'
 import Organization from './pages/Organization'
 import SettingsPage from './pages/Settings'
 import IdentityGate from './components/IdentityGate'
-import { EmptyState } from './components/ui'
+import Contacts from './pages/Contacts'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null }
@@ -49,7 +49,7 @@ function Router() {
     case 'contracts':
       return route.contractId ? <ContractEditor contractId={route.contractId} /> : <ContractsPage />
     case 'contacts':
-      return <EmptyState title="好友与联系人尚未开通" hint="联系人功能将在后续版本开放。企业成员管理请前往「公司档案与记忆」。" />
+      return <Contacts />
     case 'collaboration':
       return <Collaboration />
     case 'performance':
@@ -74,10 +74,35 @@ export default function App() {
 
   useEffect(() => {
     if (mode !== 'server') return
-    const timer = setInterval(() => void refresh(), 30_000)
-    const onFocus = () => void refresh()
+    let disposed = false
+    let refreshing = false
+    let queued = false
+    const invalidate = async () => {
+      queued = true
+      if (refreshing) return
+      refreshing = true
+      try {
+        while (queued && !disposed) {
+          queued = false
+          const before = useApp.getState().identityStatus
+          await refresh()
+          const after = useApp.getState().identityStatus
+          if (!disposed && before?.account?.id === after?.account?.id && before?.actingOrgId === after?.actingOrgId) {
+            window.dispatchEvent(new Event('nexus:invalidate'))
+          }
+        }
+      } finally { refreshing = false }
+    }
+    const unsubscribe = window.nexus.onInvalidate(() => { void invalidate() })
+    const timer = setInterval(() => void invalidate(), 30_000)
+    const onFocus = () => { void invalidate() }
     window.addEventListener('focus', onFocus)
-    return () => { clearInterval(timer); window.removeEventListener('focus', onFocus) }
+    return () => {
+      disposed = true
+      unsubscribe()
+      clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+    }
   }, [mode, refresh])
 
   if (!loading && !state) return <><IdentityGate /><Toasts /></>

@@ -93,13 +93,17 @@ test('未选企业拒绝业务，成员被移除后每次请求重新验证', as
   assert.equal(calls, 2)
 })
 
-test('业务请求从SQL重建当前身份，忽略快照中的过期企业与演示账号', async () => {
-  const db = emptyBusinessDatabase()
-  db.organizations = [{ id: 'victim-org', name: '不相关企业', shortName: '无关', kind: 'company' }]
-  db.users = [{ id: principal.userId, name: '伪造身份', orgId: 'victim-org', role: 'business', title: 'owner' }]
-  const client = clientWith((sql) => {
+test('业务请求从SQL重建当前身份，不读取旧全局快照或演示账号', async () => {
+  const queries: string[] = []
+  const client = clientWith((sql, values) => {
+    queries.push(sql)
+    assert.equal(sql.includes('business_state'), false, '003后不得再读取旧全局快照')
     if (sql.includes('SELECT m.*')) return { rows: [{ id: 'm', user_id: principal.userId, org_id: 'org-a', role: 'readonly', status: 'active' }] }
-    if (sql.startsWith('SELECT payload')) return { rows: [{ payload: db }] }
+    if (sql.includes('FROM business_transactions')) {
+      assert.deepEqual(values, ['org-a'])
+      return { rows: [] }
+    }
+    if (sql.startsWith('SELECT payload')) return { rows: [] }
     if (sql.startsWith('SELECT id,name FROM identities')) return { rows: [{ id: principal.userId, name: '当前真实姓名' }] }
     if (sql.includes('SELECT id,name,short_name')) return { rows: [{ id: 'org-a', name: '当前企业', shortName: '当前', kind: 'company' }] }
     if (sql.includes('SELECT i.id,i.name,m.org_id')) return { rows: [{ id: principal.userId, name: '当前真实姓名', org_id: 'org-a', role: 'readonly' }] }
@@ -111,6 +115,8 @@ test('业务请求从SQL重建当前身份，忽略快照中的过期企业与�
   assert.deepEqual(result.state.organizations.map((o) => o.id), ['org-a'])
   assert.equal(result.state.users[0].orgId, 'org-a')
   assert.equal(result.state.users[0].name, '当前真实姓名')
+  assert.ok(queries.some((sql) => sql.includes('FROM business_transactions')))
+  assert.deepEqual(result.state.transactions, [])
   await assert.rejects(businessRequest(client, principal, { method: 'createTransaction', args: [{ actingRole: 'owner' }] }), (error: unknown) => error instanceof HttpError && error.status === 403)
 })
 

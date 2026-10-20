@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import type { PoolClient } from 'pg'
+import { partnersRequest } from './partners.ts'
 
 export type MembershipRole = 'owner' | 'admin' | 'business' | 'finance' | 'legal' | 'readonly'
 export type Principal = { userId: string; email: string; name: string; sessionId: string; actingOrgId: string | null }
@@ -72,6 +73,7 @@ const invitationColumns = `i.id, i.email, i.org_id AS "orgId", o.name AS "orgNam
   i.expires_at AS "expiresAt", i.invited_by AS "invitedBy", i.accepted_by AS "acceptedBy", i.revision, i.created_at AS "createdAt"`
 
 export async function tenancyRequest(client: PoolClient, p: Principal, method: string, path: string, rawBody: unknown): Promise<unknown> {
+  if (path === '/partners' || path.startsWith('/partners/')) return partnersRequest(client, p, method, path, rawBody)
   if (method === 'GET' && path === '/me') {
     const account = await client.query('SELECT id,name,email FROM identities WHERE id=$1 AND status=\'active\'', [p.userId])
     if (!account.rows[0]) return fail(401, 'UNAUTHENTICATED', '账号已失效')

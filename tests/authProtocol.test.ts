@@ -341,7 +341,7 @@ test('受控 OIDC HTTP 提供者 + 真实 openid-client + PostgreSQL 认证协�
     assert.equal(f.calls.introspection.at(-1)!.get('token'), access)
   })
 
-  await t.test('身份锁先于会话行锁，成员资格移除后清理会话当前企业', async () => {
+  await t.test('身份非键更新锁先于会话行锁并兼容外键检查，成员移除后清理当前企业', async () => {
     const logged = await f.login()
     const orgId = randomUUID()
     await f.database.query('INSERT INTO organizations(id,name,short_name) VALUES($1,$2,$3)', [orgId, '协议测试企业', '协议'])
@@ -351,9 +351,12 @@ test('受控 OIDC HTTP 提供者 + 真实 openid-client + PostgreSQL 认证协�
     assert.equal((await f.authenticate(logged.token)).actingOrgId, orgId)
     const statements = f.statements.slice(before)
     const ownerLookup = statements.findIndex((sql) => /SELECT user_id FROM sessions WHERE token_hash/.test(sql))
-    const identityLock = statements.findIndex((sql) => /FROM identities WHERE id=\$1 FOR UPDATE/.test(sql))
+    const identityLock = statements.findIndex((sql) => /FROM identities WHERE id=\$1 FOR NO KEY UPDATE$/.test(sql))
     const sessionLock = statements.findIndex((sql) => /FOR UPDATE OF s/.test(sql))
-    assert.ok(ownerLookup >= 0 && identityLock > ownerLookup && sessionLock > identityLock)
+    assert.ok(ownerLookup >= 0 && identityLock > ownerLookup && sessionLock > identityLock,
+      '认证须先以非键更新锁串行化同用户请求，再锁会话；该身份锁与外键 KEY SHARE 锁兼容')
+    assert.equal(statements.some((sql) => /FROM identities WHERE id=\$1 FOR UPDATE(?:\s|$)/.test(sql)), false,
+      '身份锁不得升级为会阻塞外键检查的 FOR UPDATE')
     await f.database.query("UPDATE memberships SET status='removed' WHERE user_id=$1 AND org_id=$2", [logged.principal.userId, orgId])
     assert.equal((await f.authenticate(logged.token)).actingOrgId, null)
     const stored = await f.database.query<{ acting_org_id: null }>('SELECT acting_org_id FROM sessions WHERE id=$1', [logged.principal.sessionId])

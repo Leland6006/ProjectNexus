@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { PoolClient } from 'pg'
 import { createSession, handleCall, setLlmClient } from '../src/main/handlers.ts'
 import { API_METHODS, type ApiMethod, type ApiResult } from '../src/shared/api.ts'
@@ -6,6 +7,7 @@ import { NO_LLM } from '../src/shared/orchestrator.ts'
 import { buildViewState, canViewTransaction } from '../src/shared/permissions.ts'
 import type { Database, Organization, User, ViewState } from '../src/shared/types.ts'
 import { audit, HttpError, requireMembership, type MembershipRole, type Principal } from './tenancy.ts'
+import { loadBusinessDatabase, persistBusinessDatabase, snapshotBusiness } from './businessStorage.ts'
 
 const forbidden = new Set(['switchUser', 'resetDemo', 'setRepresentingOrg', 'grantCounsel'])
 const fullAccess = new Set<MembershipRole>(['owner', 'admin', 'business'])
@@ -49,13 +51,20 @@ export function persistedBusinessState(db: Database): Omit<Database, 'users' | '
   }
 }
 
-function readBusinessState(payload: unknown): Database {
+export function readBusinessState(payload: unknown): Database {
   const db = emptyBusinessDatabase()
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('业务数据格式无效')
   const source = payload as Record<string, unknown>
+  // 001 迁移明确以空对象初始化；已有快照必须完整声明当前版本，不能在读取时隐式升级。
+  if (Object.keys(source).length === 0) return db
+  if (source.schemaVersion !== CURRENT_SCHEMA_VERSION) throw new Error('业务数据版本不受支持，请显式迁移后重试')
+  if (Object.keys(source).some((key) => !['schemaVersion', 'users', 'organizations', ...collections].includes(key))) throw new Error('业务数据包含未知字段')
+  for (const key of ['users', 'organizations']) {
+    if (source[key] !== undefined && !Array.isArray(source[key])) throw new Error('业务目录格式无效')
+  }
   for (const key of collections) {
-    if (source[key] !== undefined && !Array.isArray(source[key])) throw new Error('业务集合格式无效')
-    if (source[key] !== undefined) Object.assign(db, { [key]: source[key] })
+    if (!Array.isArray(source[key])) throw new Error('业务集合格式无效')
+    Object.assign(db, { [key]: source[key] })
   }
   return db
 }
@@ -83,10 +92,20 @@ async function projectDirectory(client: PoolClient, db: Database, p: Principal, 
     orgIds.add(tx.initiatorOrgId)
     orgIds.add(tx.counterpartyOrgId)
   }
-  // 创建交易仅解析请求明确引用的企业，不提供可枚举的全平台企业目录。
-  if (method === 'createTransaction' && args[0] && typeof args[0] === 'object' && !Array.isArray(args[0])) {
-    const counterpartyId = (args[0] as Record<string, unknown>).counterpartyOrgId
-    if (typeof counterpartyId === 'string' && counterpartyId.length <= 128) orgIds.add(counterpartyId)
+  const partners = await client.query<{ org_id: string }>(`SELECT CASE WHEN requester_org_id=$1 THEN recipient_org_id ELSE requester_org_id END AS org_id
+    FROM partner_relationships WHERE status='accepted' AND (requester_org_id=$1 OR recipient_org_id=$1)`, [orgId])
+  for (const partner of partners.rows) orgIds.add(partner.org_id)
+  if (method === 'createTransaction') {
+    const input = args[0]
+    const counterpartyId = input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>).counterpartyOrgId : undefined
+    if (typeof counterpartyId !== 'string' || !counterpartyId || counterpartyId.length > 128 || counterpartyId === orgId) {
+      throw new HttpError(400, 'INVALID_INPUT', '请选择有效的交易对方')
+    }
+    // 与断开合作共用关系行锁，让新建交易和断开操作按事务边界排序。
+    const accepted = await client.query(`SELECT id FROM partner_relationships WHERE status='accepted'
+      AND ((requester_org_id=$1 AND recipient_org_id=$2) OR (requester_org_id=$2 AND recipient_org_id=$1)) FOR SHARE`, [orgId, counterpartyId])
+    if (!accepted.rows.length) throw new HttpError(409, 'PARTNER_REQUIRED', '请先与交易对方建立已确认的合作关系')
+    orgIds.add(counterpartyId)
   }
   const organizations = await client.query<Organization>('SELECT id,name,short_name AS "shortName",kind FROM organizations WHERE id=ANY($1::text[])', [[...orgIds]])
   db.organizations = organizations.rows
@@ -121,6 +140,14 @@ async function projectDirectory(client: PoolClient, db: Database, p: Principal, 
   db.users = [...directory.values()]
 }
 
+/** 仅对当前角色实际可见业务内容生成摘要；调用方负责身份/成员校验及一致性快照。 */
+export async function tenantChangeFingerprint(client: PoolClient, p: Principal, role: MembershipRole): Promise<string> {
+  const db = await loadBusinessDatabase(client, p.actingOrgId!, false, false)
+  db.users = [{ id: p.userId, name: p.name, orgId: p.actingOrgId!, role: role === 'legal' ? 'legal' : 'business', title: role }]
+  const visible = filterRoleView(buildViewState(db, p.userId), role)
+  return createHash('sha256').update(JSON.stringify(persistedBusinessState({ ...db, ...visible }))).digest('hex')
+}
+
 export async function businessRequest(client: PoolClient, p: Principal, body: { method: unknown; args?: unknown }): Promise<ApiResult> {
   const member = await requireMembership(client, p)
   if (!body || typeof body !== 'object' || typeof body.method !== 'string' || !Array.isArray(body.args ?? [])) {
@@ -128,10 +155,11 @@ export async function businessRequest(client: PoolClient, p: Principal, body: { 
   }
   if (!canCallBusiness(member.role, body.method)) throw new HttpError(403, 'PERMISSION_DENIED', '当前企业角色无权执行此业务操作')
   const args = (body.args ?? []) as unknown[]
-  // MVP 用一个持久化业务快照锁串行执行；后续拆分为交易级表后再缩小锁粒度。
-  const stored = await client.query<{ payload: unknown }>('SELECT payload FROM business_state WHERE id=\'singleton\' FOR UPDATE')
-  if (!stored.rows[0]) throw new Error('业务状态尚未初始化')
-  const db = readBusinessState(stored.rows[0].payload)
+  if (body.method === 'updateClauses' && !Array.isArray(args[2])) {
+    throw new HttpError(400, 'INVALID_INPUT', '请重新载入合同后编辑，并提交开始编辑时的条款快照')
+  }
+  const db = await loadBusinessDatabase(client, p.actingOrgId!, body.method !== 'getState')
+  const baseline = snapshotBusiness(db)
   await projectDirectory(client, db, p, member.role, body.method, args)
   let changed = false
   const session = createSession(db, p.userId, () => { changed = true })
@@ -142,9 +170,9 @@ export async function businessRequest(client: PoolClient, p: Principal, body: { 
     throw new HttpError(status, result.code, result.message)
   }
   if (changed) {
-    await client.query('UPDATE business_state SET payload=$1,revision=revision+1 WHERE id=\'singleton\'', [JSON.stringify(persistedBusinessState(db))])
+    await persistBusinessDatabase(client, db, baseline, p.actingOrgId!)
     await audit(client, p, `business.${body.method}`, typeof args[0] === 'string' ? args[0] : null)
   }
-  const state = filterRoleView(buildViewState(db, p.userId), member.role)
+  const state = filterRoleView({ ...buildViewState(db, p.userId), organizations: db.organizations }, member.role)
   return { ok: true, state }
 }
