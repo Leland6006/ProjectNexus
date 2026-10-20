@@ -23,13 +23,21 @@ export async function migrate(pool: Pool): Promise<void> {
     await client.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
       version text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now()
     )`)
-    const applied = await client.query<{ version: string; checksum: string }>('SELECT version,checksum FROM schema_migrations ORDER BY version')
+    const applied = await client.query<{ version: string; checksum: string }>(
+      'SELECT version,checksum FROM schema_migrations ORDER BY version'
+    )
     for (const row of applied.rows) {
-      if (!migrations.some((migration) => migration.version === row.version)) throw new Error('Database migration is newer than this API')
+      if (!migrations.some((migration) => migration.version === row.version))
+        throw new Error('Database migration is newer than this API')
     }
     if (!applied.rows.length) {
-      const legacy = await client.query<{ name: string | null }>("SELECT to_regclass('public.identities')::text AS name")
-      if (legacy.rows[0].name) throw new Error('Unversioned identity schema detected; back up and migrate explicitly before starting')
+      const legacy = await client.query<{ name: string | null }>(
+        "SELECT to_regclass('public.identities')::text AS name"
+      )
+      if (legacy.rows[0].name)
+        throw new Error(
+          'Unversioned identity schema detected; back up and migrate explicitly before starting'
+        )
     }
     for (const migration of migrations) {
       const checksum = createHash('sha256').update(migration.sql).digest('hex')
@@ -39,11 +47,16 @@ export async function migrate(pool: Pool): Promise<void> {
         continue
       }
       await client.query(migration.sql)
-      await client.query('INSERT INTO schema_migrations(version,checksum) VALUES($1,$2)', [migration.version, checksum])
+      await client.query('INSERT INTO schema_migrations(version,checksum) VALUES($1,$2)', [
+        migration.version,
+        checksum
+      ])
     }
     await client.query('COMMIT')
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined)
     throw error
-  } finally { client.release() }
+  } finally {
+    client.release()
+  }
 }

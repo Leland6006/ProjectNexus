@@ -8,10 +8,23 @@
 // The finance step never calls a model. It cannot hallucinate a funding gap it did not
 // compute, because it does not get the chance.
 
-import { buildAgentContext, mergeClaim, renderContext, selectPremises, type AgentId, type AgentContext } from './context.ts'
+import {
+  buildAgentContext,
+  mergeClaim,
+  renderContext,
+  selectPremises,
+  type AgentId,
+  type AgentContext
+} from './context.ts'
 import { detectPaymentTermsChange, latestVersionPair } from './events.ts'
 import { describeForecast, forecastCashflow } from './finance.ts'
-import { buildViewState, canSeeItem, canViewContract, canViewTransaction, effectiveOrgId } from './permissions.ts'
+import {
+  buildViewState,
+  canSeeItem,
+  canViewContract,
+  canViewTransaction,
+  effectiveOrgId
+} from './permissions.ts'
 import {
   NexusError,
   type Activity,
@@ -127,15 +140,24 @@ function makeClaim(args: {
   }
 }
 
-function primaryContract(db: Database, tx: Transaction, user: User, asOrgId: string | null): Contract | null {
-  return db.contracts
-    .filter((c) => c.transactionId === tx.id && canViewContract(user, tx, c, asOrgId))
-    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0] ?? null
+function primaryContract(
+  db: Database,
+  tx: Transaction,
+  user: User,
+  asOrgId: string | null
+): Contract | null {
+  return (
+    db.contracts
+      .filter((c) => c.transactionId === tx.id && canViewContract(user, tx, c, asOrgId))
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0] ?? null
+  )
 }
 
 function latestVersionId(db: Database, contractId: string | null): string | null {
   if (!contractId) return null
-  const forContract = db.versions.filter((v) => v.contractId === contractId).sort((a, b) => a.number - b.number)
+  const forContract = db.versions
+    .filter((v) => v.contractId === contractId)
+    .sort((a, b) => a.number - b.number)
   return forContract.length ? forContract[forContract.length - 1].id : null
 }
 
@@ -168,11 +190,21 @@ async function runSpecialist(
       return { agentId, findings, recommendation: null, claims }
     }
 
-    const costs = db.costItems.filter((c) => c.transactionId === args.transactionId && c.orgId === orgId)
+    const costs = db.costItems.filter(
+      (c) => c.transactionId === args.transactionId && c.orgId === orgId
+    )
     const account = db.cashAccounts.find((a) => a.orgId === orgId) ?? null
-    const forecast = forecastCashflow({ transaction: db.transactions.find((t) => t.id === args.transactionId)!, terms, costs, account })
+    const forecast = forecastCashflow({
+      transaction: db.transactions.find((t) => t.id === args.transactionId)!,
+      terms,
+      costs,
+      account
+    })
 
-    const prepay = Math.round(db.transactions.find((t) => t.id === args.transactionId)!.amount * terms.prepayRate * 100) / 100
+    const prepay =
+      Math.round(
+        db.transactions.find((t) => t.id === args.transactionId)!.amount * terms.prepayRate * 100
+      ) / 100
     claims.push(
       makeClaim({
         id: makeId('cl'),
@@ -210,7 +242,9 @@ async function runSpecialist(
     findings.push(describeForecast(forecast))
     if (event?.type === 'payment_terms_changed') {
       const delta = Number(event.payload.prepayAmountDelta ?? 0)
-      findings.push(`本次变更使预付款${delta < 0 ? '减少' : '增加'} ¥${Math.abs(delta).toLocaleString('zh-CN')}。`)
+      findings.push(
+        `本次变更使预付款${delta < 0 ? '减少' : '增加'} ¥${Math.abs(delta).toLocaleString('zh-CN')}。`
+      )
     }
 
     const recommendation = forecast.shortfall > 0 ? '建议改分阶段收款或提高预付款比例。' : null
@@ -279,7 +313,15 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestrationRe
     event = opts.event
   } else if (contract) {
     const [prev, next] = latestVersionPair(db.versions, contract.id)
-    if (next) event = detectPaymentTermsChange({ transaction: tx, contract, previous: prev, next, at: now, makeId })
+    if (next)
+      event = detectPaymentTermsChange({
+        transaction: tx,
+        contract,
+        previous: prev,
+        next,
+        at: now,
+        makeId
+      })
   }
 
   const agents = routeAgents(event)
@@ -333,7 +375,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestrationRe
       title = lines[0].slice(0, 80)
       rationale = lines.slice(1).join('\n') || rationale
     }
-    actions = lines.slice(1, 4).map((l) => ({ kind: 'add_task' as const, title: l.slice(0, 80), detail: l }))
+    actions = lines
+      .slice(1, 4)
+      .map((l) => ({ kind: 'add_task' as const, title: l.slice(0, 80), detail: l }))
   }
 
   if (actions.length === 0) {
@@ -400,7 +444,12 @@ function isStale(db: Database, proposal: Proposal): boolean {
   return latestVersionId(db, proposal.contractId) !== proposal.baseVersionId
 }
 
-function authorizeProposal(db: Database, proposalId: string, userId: string, asOrgId?: string | null): Proposal {
+function authorizeProposal(
+  db: Database,
+  proposalId: string,
+  userId: string,
+  asOrgId?: string | null
+): Proposal {
   const user = db.users.find((u) => u.id === userId)
   const proposal = db.proposals.find((p) => p.id === proposalId)
   const tx = proposal && db.transactions.find((t) => t.id === proposal.transactionId)
@@ -410,7 +459,11 @@ function authorizeProposal(db: Database, proposalId: string, userId: string, asO
   }
   if (proposal.contractId) {
     const contract = db.contracts.find((c) => c.id === proposal.contractId)
-    if (!contract || contract.transactionId !== tx.id || !canViewContract(user, tx, contract, asOrgId)) {
+    if (
+      !contract ||
+      contract.transactionId !== tx.id ||
+      !canViewContract(user, tx, contract, asOrgId)
+    ) {
       throw new NexusError('PERMISSION_DENIED', '无权访问建议关联的合同')
     }
   }
@@ -439,8 +492,12 @@ export function approveProposal(args: {
   // Validate the entire evidence set before mutating any claim or proposal.
   for (const id of proposal.claimIds) {
     const claim = db.claims.find((c) => c.id === id)
-    if (!claim || claim.supersededById || claim.orgId !== proposal.orgId ||
-        (claim.transactionId !== null && claim.transactionId !== tx.id)) {
+    if (
+      !claim ||
+      claim.supersededById ||
+      claim.orgId !== proposal.orgId ||
+      (claim.transactionId !== null && claim.transactionId !== tx.id)
+    ) {
       throw new NexusError('CONFLICT', '建议依据缺失或已被替代，请重新生成建议')
     }
     if (!canSeeItem(user, tx, claim, args.representingOrgId)) {
@@ -461,7 +518,9 @@ export function approveProposal(args: {
   }
 
   const suggestions: Suggestion[] = []
-  const contract = proposal.contractId ? db.contracts.find((c) => c.id === proposal.contractId) : undefined
+  const contract = proposal.contractId
+    ? db.contracts.find((c) => c.id === proposal.contractId)
+    : undefined
   for (const action of proposal.actions) {
     if (!action.clauseId || !action.proposedBody || !contract) continue
     const clause = contract.clauses.find((c) => c.id === action.clauseId)
@@ -504,7 +563,13 @@ export function approveProposal(args: {
   return { proposal, claims: promoted, suggestions, activity }
 }
 
-export function rejectProposal(args: { db: Database; proposalId: string; userId: string; at: string; representingOrgId?: string | null }): Proposal {
+export function rejectProposal(args: {
+  db: Database
+  proposalId: string
+  userId: string
+  at: string
+  representingOrgId?: string | null
+}): Proposal {
   const proposal = authorizeProposal(args.db, args.proposalId, args.userId, args.representingOrgId)
   proposal.status = 'rejected'
   proposal.resolvedBy = args.userId

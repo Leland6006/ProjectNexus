@@ -7,7 +7,7 @@ on:
 
 jobs:
   verify:
-    name: Typecheck, test and build
+    name: Format, typecheck, test and build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +19,7 @@ jobs:
           cache: npm
 
       - run: npm ci
+      - run: npm run format:check
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

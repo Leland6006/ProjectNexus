@@ -74,9 +74,15 @@ test('a counsel granted by both parties only sees the side they are acting for',
   const forB = buildViewState(db, 'u_a_counsel', { representingOrgId: ORG_B })
 
   assert.ok(forA.comments.some((c) => c.id === 'cm_a_counsel'))
-  assert.ok(!forA.comments.some((c) => c.id === 'cm_b_counsel'), 'B-side opinion leaked to the A-side view')
+  assert.ok(
+    !forA.comments.some((c) => c.id === 'cm_b_counsel'),
+    'B-side opinion leaked to the A-side view'
+  )
   assert.ok(forB.comments.some((c) => c.id === 'cm_b_counsel'))
-  assert.ok(!forB.comments.some((c) => c.id === 'cm_a_counsel'), 'A-side opinion leaked to the B-side view')
+  assert.ok(
+    !forB.comments.some((c) => c.id === 'cm_a_counsel'),
+    'A-side opinion leaked to the B-side view'
+  )
 })
 
 test('switching the represented side goes through the IPC allowlist', async () => {
@@ -85,7 +91,12 @@ test('switching the represented side goes through the IPC allowlist', async () =
     const loaded = new JsonStore(dir).load()
     const db = loaded.db
     const tx = db.transactions.find((t) => t.id === 'tx_equip')!
-    tx.counselGrants.push({ userId: 'u_a_counsel', grantedByOrgId: ORG_B, grantedByUserId: 'u_b_legal', grantedAt: NOW })
+    tx.counselGrants.push({
+      userId: 'u_a_counsel',
+      grantedByOrgId: ORG_B,
+      grantedByUserId: 'u_b_legal',
+      grantedAt: NOW
+    })
     const session = createSession(db, 'u_a_counsel', () => {})
 
     const denied = await handleCall(session, 'setRepresentingOrg', [ORG_LAW])
@@ -121,12 +132,14 @@ test('switching account clears the delegated authority', async () => {
   try {
     const loaded = new JsonStore(dir).load()
     const db = loaded.db
-    db.transactions.find((t) => t.id === 'tx_equip')!.counselGrants.push({
-      userId: 'u_a_counsel',
-      grantedByOrgId: ORG_B,
-      grantedByUserId: 'u_b_legal',
-      grantedAt: NOW
-    })
+    db.transactions
+      .find((t) => t.id === 'tx_equip')!
+      .counselGrants.push({
+        userId: 'u_a_counsel',
+        grantedByOrgId: ORG_B,
+        grantedByUserId: 'u_b_legal',
+        grantedAt: NOW
+      })
     const session = createSession(db, 'u_a_counsel', () => {})
     assert.equal((await handleCall(session, 'setRepresentingOrg', [ORG_B])).ok, true)
     assert.equal((await handleCall(session, 'switchUser', ['u_a_biz'])).ok, true)
@@ -142,8 +155,14 @@ test('the directory only contains organisations the user actually deals with', (
   const c = buildViewState(db, 'u_c_biz')
   const orgIds = c.organizations.map((o) => o.id).sort()
   assert.deepEqual(orgIds, [ORG_A, 'org_huaxin'].sort())
-  assert.ok(!c.users.some((u) => u.id === 'u_b_biz'), 'unrelated company B member leaked into the directory')
-  assert.ok(!c.users.some((u) => u.id === 'u_a_counsel'), 'counsel of another deal leaked into the directory')
+  assert.ok(
+    !c.users.some((u) => u.id === 'u_b_biz'),
+    'unrelated company B member leaked into the directory'
+  )
+  assert.ok(
+    !c.users.some((u) => u.id === 'u_a_counsel'),
+    'counsel of another deal leaked into the directory'
+  )
 })
 
 test('the full account list is only shipped in demo mode', () => {

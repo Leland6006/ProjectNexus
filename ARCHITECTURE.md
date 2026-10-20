@@ -21,19 +21,19 @@ Renderer (React)  --window.nexus.call(method, ...args)-->  Preload  --IPC 'nexus
 
 ## 目录
 
-| 路径 | 作用 |
-|---|---|
-| `src/shared/types.ts` | 领域模型与状态/角色标签 |
-| `src/shared/permissions.ts` | 权限模型与 `buildViewState` |
-| `src/shared/service.ts` | 全部业务操作 |
-| `src/shared/diff.ts` | 版本差异（条款匹配 + LCS 字/词级比较，先裁剪公共前后缀） |
-| `src/shared/sanitize.ts` | 合同 HTML 清理（标签白名单 + 丢弃全部属性） |
-| `src/shared/migrations.ts` | 存储 schema 版本与升级链 |
-| `src/shared/editorRules.ts` | 编辑器规则（可见范围选项、确认最终版条件、版本排序） |
-| `src/shared/templates.ts` `seed.ts` | 虚构模板与演示数据 |
-| `src/main/` | 窗口、IPC、`JsonStore` |
-| `src/preload/index.ts` | 单一桥接函数 |
-| `src/renderer/src/` | 页面、组件、Zustand store |
+| 路径                                | 作用                                                     |
+| ----------------------------------- | -------------------------------------------------------- |
+| `src/shared/types.ts`               | 领域模型与状态/角色标签                                  |
+| `src/shared/permissions.ts`         | 权限模型与 `buildViewState`                              |
+| `src/shared/service.ts`             | 全部业务操作                                             |
+| `src/shared/diff.ts`                | 版本差异（条款匹配 + LCS 字/词级比较，先裁剪公共前后缀） |
+| `src/shared/sanitize.ts`            | 合同 HTML 清理（标签白名单 + 丢弃全部属性）              |
+| `src/shared/migrations.ts`          | 存储 schema 版本与升级链                                 |
+| `src/shared/editorRules.ts`         | 编辑器规则（可见范围选项、确认最终版条件、版本排序）     |
+| `src/shared/templates.ts` `seed.ts` | 虚构模板与演示数据                                       |
+| `src/main/`                         | 窗口、IPC、`JsonStore`                                   |
+| `src/preload/index.ts`              | 单一桥接函数                                             |
+| `src/renderer/src/`                 | 页面、组件、Zustand store                                |
 
 ## 数据模型
 
@@ -67,14 +67,14 @@ Organization、User、Transaction、Contract、ContractVersion、Comment、Sugge
 
 目标：不同专业的 Agent 围绕同一家企业、同一笔交易协同，而不是各自回答孤立问题。它建立在既有业务对象之上，不推翻它们。
 
-| 文件 | 职责 |
-|---|---|
-| `src/shared/events.ts` | 把结构化条款快照的差异变成带数值的领域事件 |
-| `src/shared/finance.ts` | 现金流测算。**纯计算，不调用模型** |
-| `src/shared/context.ts` | Claim（企业记忆单元）、Agent 上下文分发、事实晋升规则 |
-| `src/shared/orchestrator.ts` | 确定性 DAG + 三个标注的模型节点 + 人工确认闭环 |
-| `src/shared/proposalView.ts` | 建议中心的展示规则（陈旧判定、证据排序、状态文案） |
-| `src/renderer/src/pages/Proposals.tsx` | 待确认建议中心与企业记忆面板 |
+| 文件                                   | 职责                                                  |
+| -------------------------------------- | ----------------------------------------------------- |
+| `src/shared/events.ts`                 | 把结构化条款快照的差异变成带数值的领域事件            |
+| `src/shared/finance.ts`                | 现金流测算。**纯计算，不调用模型**                    |
+| `src/shared/context.ts`                | Claim（企业记忆单元）、Agent 上下文分发、事实晋升规则 |
+| `src/shared/orchestrator.ts`           | 确定性 DAG + 三个标注的模型节点 + 人工确认闭环        |
+| `src/shared/proposalView.ts`           | 建议中心的展示规则（陈旧判定、证据排序、状态文案）    |
+| `src/renderer/src/pages/Proposals.tsx` | 待确认建议中心与企业记忆面板                          |
 
 两条硬性规则：
 

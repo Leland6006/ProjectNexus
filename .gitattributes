@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+# Keep migration SQL consistent across Windows and Unix checkouts.
+server/schema.sql text eol=lf

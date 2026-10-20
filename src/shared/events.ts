@@ -68,7 +68,11 @@ export interface DetectInput {
 export function detectPaymentTermsChange(input: DetectInput): DomainEvent | null {
   const { transaction: tx, contract, previous, next, at, makeId } = input
   if (!next) return null
-  const delta = diffPaymentTerms(previous?.paymentTerms ?? null, next.paymentTerms ?? null, tx.amount)
+  const delta = diffPaymentTerms(
+    previous?.paymentTerms ?? null,
+    next.paymentTerms ?? null,
+    tx.amount
+  )
   if (!delta) return null
 
   const from = `${Math.round(delta.prepayRateFrom * 100)}%`
@@ -94,8 +98,13 @@ export function detectPaymentTermsChange(input: DetectInput): DomainEvent | null
  * Newest two versions of a contract, oldest first. Event detection only needs the last
  * step; replaying the whole history is a Phase 2 concern.
  */
-export function latestVersionPair(versions: ContractVersion[], contractId: string): [ContractVersion | null, ContractVersion | null] {
-  const forContract = versions.filter((v) => v.contractId === contractId).sort((a, b) => a.number - b.number)
+export function latestVersionPair(
+  versions: ContractVersion[],
+  contractId: string
+): [ContractVersion | null, ContractVersion | null] {
+  const forContract = versions
+    .filter((v) => v.contractId === contractId)
+    .sort((a, b) => a.number - b.number)
   if (forContract.length === 0) return [null, null]
   if (forContract.length === 1) return [null, forContract[0]]
   return [forContract[forContract.length - 2], forContract[forContract.length - 1]]

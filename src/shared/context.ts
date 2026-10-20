@@ -15,7 +15,14 @@
 
 import { canSeeItem, canViewContract, canViewTransaction, effectiveOrgId } from './permissions.ts'
 import { sanitizeHtml } from './sanitize.ts'
-import { NexusError, type Claim, type Database, type DomainEvent, type Transaction, type User } from './types.ts'
+import {
+  NexusError,
+  type Claim,
+  type Database,
+  type DomainEvent,
+  type Transaction,
+  type User
+} from './types.ts'
 
 export type AgentId = 'legal' | 'finance' | 'ops' | 'main'
 
@@ -34,7 +41,10 @@ export interface AgentScope {
 export const AGENT_SCOPE: Record<AgentId, AgentScope> = {
   legal: { claimPrefixes: ['payment.', 'contract.', 'delivery.', 'risk.'], readsClauses: true },
   finance: { claimPrefixes: ['payment.', 'cost.', 'cash.'], readsClauses: false },
-  ops: { claimPrefixes: ['payment.', 'cost.', 'delivery.', 'milestone.', 'ops.'], readsClauses: false },
+  ops: {
+    claimPrefixes: ['payment.', 'cost.', 'delivery.', 'milestone.', 'ops.'],
+    readsClauses: false
+  },
   main: { claimPrefixes: ['*'], readsClauses: true }
 }
 
@@ -98,7 +108,8 @@ export function buildAgentContext(
     const contract = db.contracts
       .filter((c) => c.transactionId === tx.id && canViewContract(user, tx, c, asOrgId))
       .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0]
-    if (contract) clauses = contract.clauses.map((c) => ({ id: c.id, title: c.title, body: c.body }))
+    if (contract)
+      clauses = contract.clauses.map((c) => ({ id: c.id, title: c.title, body: c.body }))
   }
 
   return { agentId, transactionId, orgId, claims, clauses, event: opts.event ?? null }
@@ -126,7 +137,10 @@ export type MergeAction = 'added' | 'replaced' | 'ignored'
  * quietly rewriting company memory. A newer inference replaces an older one and marks
  * the old record superseded so the trail stays auditable.
  */
-export function mergeClaim(claims: Claim[], incoming: Claim): { claim: Claim; action: MergeAction } {
+export function mergeClaim(
+  claims: Claim[],
+  incoming: Claim
+): { claim: Claim; action: MergeAction } {
   const existing = claims.find(
     (c) =>
       c.id !== incoming.id &&
@@ -187,7 +201,11 @@ export function renderContext(ctx: AgentContext): string {
     lines.push('')
     lines.push('## 条款')
     for (const c of ctx.clauses) {
-      const body = sanitizeHtml(c.body).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4_000)
+      const body = sanitizeHtml(c.body)
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 4_000)
       lines.push(`- [${c.id}] ${c.title}: ${body}`)
     }
   }

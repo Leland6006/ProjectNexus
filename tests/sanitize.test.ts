@@ -8,7 +8,10 @@ test('allowed editor markup is preserved', () => {
 })
 
 test('every attribute is dropped, including event handlers', () => {
-  assert.equal(sanitizeHtml('<p onclick="alert(1)" class="x" style="color:red">hi</p>'), '<p>hi</p>')
+  assert.equal(
+    sanitizeHtml('<p onclick="alert(1)" class="x" style="color:red">hi</p>'),
+    '<p>hi</p>'
+  )
   assert.equal(sanitizeHtml("<p onmouseover='x()'>hi</p>"), '<p>hi</p>')
 })
 

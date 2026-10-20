@@ -44,7 +44,9 @@ export class JsonStore {
 
     const declared = (parsed as { currentUserId?: unknown }).currentUserId
     const currentUserId =
-      typeof declared === 'string' && migrated.db.users.some((u) => u.id === declared) ? declared : DEFAULT_USER_ID
+      typeof declared === 'string' && migrated.db.users.some((u) => u.id === declared)
+        ? declared
+        : DEFAULT_USER_ID
     const state: PersistedState = { db: migrated.db, currentUserId }
 
     // Persist an upgrade immediately so a crash cannot leave the old file in place.

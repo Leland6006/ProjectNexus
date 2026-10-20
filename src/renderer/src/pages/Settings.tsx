@@ -32,7 +32,8 @@ function DemoSettings() {
           <div className="flex gap-3 px-4 py-3 text-sm text-ink-700">
             <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <p>
-              账号切换与权限隔离仅用于本地演示，用来展示企业之间、企业与外部律师之间的数据隔离逻辑。它<strong>不是</strong>真实的身份认证，不能用于保护真实的商业机密。
+              账号切换与权限隔离仅用于本地演示，用来展示企业之间、企业与外部律师之间的数据隔离逻辑。它
+              <strong>不是</strong>真实的身份认证，不能用于保护真实的商业机密。
               真实的登录认证与服务端权限将在 V0.2 联网版本中提供。
             </p>
           </div>
@@ -48,7 +49,9 @@ function DemoSettings() {
               </Button>
             ) : (
               <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
-                <p className="mb-2 text-sm text-rose-800">这会清除你在本机创建的所有交易、合同、评论和履约节点，并恢复为初始演示数据。此操作无法撤销。</p>
+                <p className="mb-2 text-sm text-rose-800">
+                  这会清除你在本机创建的所有交易、合同、评论和履约节点，并恢复为初始演示数据。此操作无法撤销。
+                </p>
                 <div className="flex gap-2">
                   <Button
                     variant="danger"

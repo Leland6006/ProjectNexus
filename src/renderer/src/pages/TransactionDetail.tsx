@@ -2,7 +2,18 @@ import { useState } from 'react'
 import { ArrowLeft, FilePlus2, Pencil, Scale, Send, Sparkles, UserPlus } from 'lucide-react'
 import { TRANSACTION_STATUS_LABEL, type Transaction, type TransactionStatus } from '@shared/types'
 import { TEMPLATES } from '@shared/templates'
-import { Badge, Button, Card, CardHeader, Dialog, EmptyState, Field, Input, Select, Textarea } from '@/components/ui'
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  Dialog,
+  EmptyState,
+  Field,
+  Input,
+  Select,
+  Textarea
+} from '@/components/ui'
 import { ContractStatusBadge, TransactionStatusBadge, VisibilityBadge } from '@/components/badges'
 import { formatDateTime, formatMoney } from '@/lib/utils'
 import { runAgentAnalysis } from '@/lib/agents'
@@ -12,8 +23,16 @@ import { useApp, useView } from '@/store'
 function EditDialog({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   const act = useApp((x) => x.act)
   const busy = useApp((x) => x.busy)
-  const [f, setF] = useState({ name: tx.name, type: tx.type, amount: String(tx.amount), expectedSignDate: tx.expectedSignDate, description: tx.description, status: tx.status })
-  const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((p) => ({ ...p, [k]: e.target.value }))
+  const [f, setF] = useState({
+    name: tx.name,
+    type: tx.type,
+    amount: String(tx.amount),
+    expectedSignDate: tx.expectedSignDate,
+    description: tx.description,
+    status: tx.status
+  })
+  const set = (k: keyof typeof f) => (e: { target: { value: string } }) =>
+    setF((p) => ({ ...p, [k]: e.target.value }))
   return (
     <Dialog open onClose={onClose} title="编辑交易项目">
       <div className="space-y-3">
@@ -49,7 +68,14 @@ function EditDialog({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
             variant="primary"
             loading={busy}
             onClick={async () => {
-              if (await act('updateTransaction', [tx.id, { ...f, amount: Number(f.amount) }], '已保存修改')) onClose()
+              if (
+                await act(
+                  'updateTransaction',
+                  [tx.id, { ...f, amount: Number(f.amount) }],
+                  '已保存修改'
+                )
+              )
+                onClose()
             }}
           >
             保存
@@ -91,7 +117,14 @@ function NewContractDialog({ tx, onClose }: { tx: Transaction; onClose: () => vo
             loading={busy}
             onClick={async () => {
               const before = new Set(s.contracts.map((c) => c.id))
-              if (!(await act('createContract', tpl ? [tx.id, title, tpl] : [tx.id, title], '合同已创建'))) return
+              if (
+                !(await act(
+                  'createContract',
+                  tpl ? [tx.id, title, tpl] : [tx.id, title],
+                  '合同已创建'
+                ))
+              )
+                return
               onClose()
               const created = useApp.getState().state?.contracts.find((c) => !before.has(c.id))
               if (created) navigate({ page: 'contracts', contractId: created.id })
@@ -119,15 +152,23 @@ export default function TransactionDetail({ transactionId }: { transactionId: st
   if (!tx) {
     return (
       <div className="p-6">
-        <EmptyState title="交易项目不存在或无权访问" action={<Button onClick={() => navigate({ page: 'transactions' })}>返回交易列表</Button>} />
+        <EmptyState
+          title="交易项目不存在或无权访问"
+          action={<Button onClick={() => navigate({ page: 'transactions' })}>返回交易列表</Button>}
+        />
       </div>
     )
   }
 
   const a = accessFor(s, tx)
   const contracts = s.contracts.filter((c) => c.transactionId === tx.id)
-  const messages = s.messages.filter((m) => m.transactionId === tx.id).sort((x, y) => x.createdAt.localeCompare(y.createdAt))
-  const activities = s.activities.filter((x) => x.transactionId === tx.id).sort((x, y) => y.createdAt.localeCompare(x.createdAt)).slice(0, 12)
+  const messages = s.messages
+    .filter((m) => m.transactionId === tx.id)
+    .sort((x, y) => x.createdAt.localeCompare(y.createdAt))
+  const activities = s.activities
+    .filter((x) => x.transactionId === tx.id)
+    .sort((x, y) => y.createdAt.localeCompare(x.createdAt))
+    .slice(0, 12)
   const counselUsers = directory(s).users.filter((u) => u.role === 'external_counsel')
   const grantable = counselUsers.filter((u) => !tx.counselGrants.some((g) => g.userId === u.id))
   const myCounsel = tx.counselGrants.filter((g) => g.grantedByOrgId === a.orgId)
@@ -143,7 +184,10 @@ export default function TransactionDetail({ transactionId }: { transactionId: st
 
   return (
     <div className="mx-auto max-w-6xl p-6">
-      <button onClick={() => navigate({ page: 'transactions' })} className="mb-3 inline-flex items-center gap-1 text-xs text-ink-500 hover:text-ink-900">
+      <button
+        onClick={() => navigate({ page: 'transactions' })}
+        className="mb-3 inline-flex items-center gap-1 text-xs text-ink-500 hover:text-ink-900"
+      >
         <ArrowLeft className="h-3.5 w-3.5" />
         返回交易项目
       </button>
@@ -165,18 +209,31 @@ export default function TransactionDetail({ transactionId }: { transactionId: st
           )}
           {a.isParty && (
             <Button loading={busy} onClick={() => void runAgentAnalysis(tx.id)}>
-              <Sparkles className="h-3.5 w-3.5" />
-              让 AI 团队分析
+              <Sparkles className="h-3.5 w-3.5" />让 AI 团队分析
             </Button>
           )}
           {invitePending && (
-            <Button variant="primary" loading={busy} onClick={() => void act('inviteCounterparty', [tx.id], `已邀请 ${orgOf(s, tx.counterpartyOrgId)?.shortName}`)}>
+            <Button
+              variant="primary"
+              loading={busy}
+              onClick={() =>
+                void act(
+                  'inviteCounterparty',
+                  [tx.id],
+                  `已邀请 ${orgOf(s, tx.counterpartyOrgId)?.shortName}`
+                )
+              }
+            >
               <UserPlus className="h-3.5 w-3.5" />
               邀请 {orgOf(s, tx.counterpartyOrgId)?.shortName}
             </Button>
           )}
           {mustAccept && (
-            <Button variant="primary" loading={busy} onClick={() => void act('acceptInvitation', [tx.id], '已加入交易项目')}>
+            <Button
+              variant="primary"
+              loading={busy}
+              onClick={() => void act('acceptInvitation', [tx.id], '已加入交易项目')}
+            >
               接受邀请并加入
             </Button>
           )}
@@ -198,11 +255,18 @@ export default function TransactionDetail({ transactionId }: { transactionId: st
               }
             />
             {contracts.length === 0 ? (
-              <EmptyState title="还没有可见的合同" hint={a.isOwner ? '从模板创建第一份合同，开始起草' : '发起方共享合同后会显示在这里'} />
+              <EmptyState
+                title="还没有可见的合同"
+                hint={a.isOwner ? '从模板创建第一份合同，开始起草' : '发起方共享合同后会显示在这里'}
+              />
             ) : (
               <ul>
                 {contracts.map((c) => (
-                  <li key={c.id} onClick={() => navigate({ page: 'contracts', contractId: c.id })} className="flex cursor-pointer items-center justify-between border-t border-slate-100 px-4 py-3 first:border-t-0 hover:bg-slate-50">
+                  <li
+                    key={c.id}
+                    onClick={() => navigate({ page: 'contracts', contractId: c.id })}
+                    className="flex cursor-pointer items-center justify-between border-t border-slate-100 px-4 py-3 first:border-t-0 hover:bg-slate-50"
+                  >
                     <div>
                       <p className="font-medium">{c.title}</p>
                       <p className="text-xs text-ink-500">
@@ -220,7 +284,9 @@ export default function TransactionDetail({ transactionId }: { transactionId: st
           <Card>
             <CardHeader title="项目消息" subtitle="「仅本企业」消息对方不可见" />
             <div className="max-h-80 space-y-3 overflow-y-auto px-4 py-3">
-              {messages.length === 0 && <p className="py-4 text-center text-xs text-ink-500">暂无消息</p>}
+              {messages.length === 0 && (
+                <p className="py-4 text-center text-xs text-ink-500">暂无消息</p>
+              )}
               {messages.map((m) => (
                 <div key={m.id} className="rounded-lg bg-slate-50 px-3 py-2">
                   <div className="mb-0.5 flex items-center gap-2 text-xs text-ink-500">
@@ -233,15 +299,34 @@ export default function TransactionDetail({ transactionId }: { transactionId: st
               ))}
             </div>
             {a.isCounsel ? (
-              <p className="border-t border-slate-100 px-4 py-3 text-xs text-ink-500">外部律师请在合同条款上添加意见。</p>
+              <p className="border-t border-slate-100 px-4 py-3 text-xs text-ink-500">
+                外部律师请在合同条款上添加意见。
+              </p>
             ) : (
               <div className="flex items-end gap-2 border-t border-slate-100 p-3">
-                <Textarea className="min-h-[40px] flex-1" rows={2} value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="输入消息…" aria-label="消息内容" />
-                <Select className="w-28" value={msgVis} onChange={(e) => setMsgVis(e.target.value as typeof msgVis)} aria-label="消息可见范围">
+                <Textarea
+                  className="min-h-[40px] flex-1"
+                  rows={2}
+                  value={msg}
+                  onChange={(e) => setMsg(e.target.value)}
+                  placeholder="输入消息…"
+                  aria-label="消息内容"
+                />
+                <Select
+                  className="w-28"
+                  value={msgVis}
+                  onChange={(e) => setMsgVis(e.target.value as typeof msgVis)}
+                  aria-label="消息可见范围"
+                >
                   <option value="shared">双方可见</option>
                   <option value="internal">仅本企业</option>
                 </Select>
-                <Button variant="primary" onClick={() => void send()} loading={busy} disabled={!msg.trim()}>
+                <Button
+                  variant="primary"
+                  onClick={() => void send()}
+                  loading={busy}
+                  disabled={!msg.trim()}
+                >
                   <Send className="h-3.5 w-3.5" />
                   发送
                 </Button>
@@ -268,7 +353,15 @@ export default function TransactionDetail({ transactionId }: { transactionId: st
               ))}
               <div className="flex justify-between gap-3">
                 <dt className="text-ink-500">对方状态</dt>
-                <dd>{tx.counterpartyStatus === 'joined' ? <Badge tone="green">已加入</Badge> : tx.counterpartyStatus === 'invited' ? <Badge tone="amber">已邀请，待加入</Badge> : <Badge>未邀请</Badge>}</dd>
+                <dd>
+                  {tx.counterpartyStatus === 'joined' ? (
+                    <Badge tone="green">已加入</Badge>
+                  ) : tx.counterpartyStatus === 'invited' ? (
+                    <Badge tone="amber">已邀请，待加入</Badge>
+                  ) : (
+                    <Badge>未邀请</Badge>
+                  )}
+                </dd>
               </div>
             </dl>
           </Card>
@@ -291,7 +384,14 @@ export default function TransactionDetail({ transactionId }: { transactionId: st
               {a.isParty && grantable.length > 0 && (
                 <div className="mt-3 flex gap-2">
                   {grantable.map((u) => (
-                    <Button key={u.id} size="sm" loading={busy} onClick={() => void act('grantCounsel', [tx.id, u.id], `已邀请律师 ${u.name}`)}>
+                    <Button
+                      key={u.id}
+                      size="sm"
+                      loading={busy}
+                      onClick={() =>
+                        void act('grantCounsel', [tx.id, u.id], `已邀请律师 ${u.name}`)
+                      }
+                    >
                       <UserPlus className="h-3.5 w-3.5" />
                       邀请 {u.name}
                     </Button>
@@ -316,10 +416,26 @@ export default function TransactionDetail({ transactionId }: { transactionId: st
             ) : (
               <ul>
                 {txProposals.map((p) => (
-                  <li key={p.id} onClick={() => navigate({ page: 'proposals' })} className="cursor-pointer border-t border-slate-100 px-4 py-2.5 first:border-t-0 hover:bg-slate-50">
+                  <li
+                    key={p.id}
+                    onClick={() => navigate({ page: 'proposals' })}
+                    className="cursor-pointer border-t border-slate-100 px-4 py-2.5 first:border-t-0 hover:bg-slate-50"
+                  >
                     <div className="flex items-center gap-2">
-                      <Badge tone={p.status === 'pending' ? 'amber' : p.status === 'approved' ? 'green' : 'gray'}>
-                        {p.status === 'pending' ? '待确认' : p.status === 'approved' ? '已采纳' : '已忽略'}
+                      <Badge
+                        tone={
+                          p.status === 'pending'
+                            ? 'amber'
+                            : p.status === 'approved'
+                              ? 'green'
+                              : 'gray'
+                        }
+                      >
+                        {p.status === 'pending'
+                          ? '待确认'
+                          : p.status === 'approved'
+                            ? '已采纳'
+                            : '已忽略'}
                       </Badge>
                       <span className="truncate text-sm font-medium">{p.title}</span>
                     </div>

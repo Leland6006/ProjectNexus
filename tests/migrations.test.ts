@@ -3,7 +3,12 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CURRENT_SCHEMA_VERSION, MIGRATIONS, migrateDatabase, type MigrationStep } from '../src/shared/migrations.ts'
+import {
+  CURRENT_SCHEMA_VERSION,
+  MIGRATIONS,
+  migrateDatabase,
+  type MigrationStep
+} from '../src/shared/migrations.ts'
 import { createSeedDatabase } from '../src/shared/seed.ts'
 import { JsonStore } from '../src/main/store.ts'
 

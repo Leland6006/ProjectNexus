@@ -19,9 +19,22 @@ function Segments({ segments }: { segments: DiffSegment[] }) {
   )
 }
 
-const CHANGE_LABEL = { added: ['green', '新增'], removed: ['red', '删除'], modified: ['amber', '修改'], unchanged: ['gray', '无变化'] } as const
+const CHANGE_LABEL = {
+  added: ['green', '新增'],
+  removed: ['red', '删除'],
+  modified: ['amber', '修改'],
+  unchanged: ['gray', '无变化']
+} as const
 
-export function DiffView({ oldClauses, newClauses, showUnchanged = false }: { oldClauses: Clause[]; newClauses: Clause[]; showUnchanged?: boolean }) {
+export function DiffView({
+  oldClauses,
+  newClauses,
+  showUnchanged = false
+}: {
+  oldClauses: Clause[]
+  newClauses: Clause[]
+  showUnchanged?: boolean
+}) {
   const diffs = useMemo(() => diffClauses(oldClauses, newClauses), [oldClauses, newClauses])
   const summary = summarizeDiff(diffs)
   const visible = diffs.filter((d) => showUnchanged || d.change !== 'unchanged')

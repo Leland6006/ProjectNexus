@@ -105,7 +105,8 @@ export function forecastCashflow(input: ForecastInput): CashflowForecast {
   let balance = account?.openingBalance ?? 0
   const timeline: TimelinePoint[] = []
   let minBalance = balance
-  let shortfallDate: string | null = balance < 0 ? (account?.asOf ?? day(tx.expectedSignDate)) : null
+  let shortfallDate: string | null =
+    balance < 0 ? (account?.asOf ?? day(tx.expectedSignDate)) : null
 
   for (const p of points) {
     balance = money(balance + p.delta)

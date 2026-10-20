@@ -3,9 +3,26 @@ import type { ApiMethod, NexusBridge } from '@shared/api'
 import type { IdentityStatus } from '@shared/identity'
 import type { ViewState } from '@shared/types'
 
-export type Page = 'dashboard' | 'proposals' | 'transactions' | 'contracts' | 'contacts' | 'collaboration' | 'performance' | 'organization' | 'settings'
-export interface Route { page: Page; transactionId?: string; contractId?: string }
-export interface Toast { id: number; kind: 'success' | 'error' | 'info'; text: string }
+export type Page =
+  | 'dashboard'
+  | 'proposals'
+  | 'transactions'
+  | 'contracts'
+  | 'contacts'
+  | 'collaboration'
+  | 'performance'
+  | 'organization'
+  | 'settings'
+export interface Route {
+  page: Page
+  transactionId?: string
+  contractId?: string
+}
+export interface Toast {
+  id: number
+  kind: 'success' | 'error' | 'info'
+  text: string
+}
 interface AppStore {
   state: ViewState | null
   mode: 'demo' | 'server' | null
@@ -29,12 +46,22 @@ interface AppStore {
 let toastSeq = 0
 let contextVersion = 0
 let operationSeq = 0
-const accessExpired = (code: string): boolean => /UNAUTHORIZED|UNAUTHENTICATED|ACCOUNT_DISABLED|FORBIDDEN|SESSION|MEMBERSHIP|AUTH_REQUIRED|PERMISSION_DENIED|^401$|^403$/.test(code)
+const accessExpired = (code: string): boolean =>
+  /UNAUTHORIZED|UNAUTHENTICATED|ACCOUNT_DISABLED|FORBIDDEN|SESSION|MEMBERSHIP|AUTH_REQUIRED|PERMISSION_DENIED|^401$|^403$/.test(
+    code
+  )
 const bridge = (globalThis as typeof globalThis & { window: { nexus: NexusBridge } }).window.nexus
 
 export const useApp = create<AppStore>((set, get) => ({
-  state: null, mode: null, identityStatus: null, choosingCompany: false, error: null,
-  loading: true, busy: false, route: { page: 'dashboard' }, toasts: [],
+  state: null,
+  mode: null,
+  identityStatus: null,
+  choosingCompany: false,
+  error: null,
+  loading: true,
+  busy: false,
+  route: { page: 'dashboard' },
+  toasts: [],
 
   async init() {
     set({ loading: true, error: null })
@@ -50,7 +77,9 @@ export const useApp = create<AppStore>((set, get) => ({
       }
     } catch (error) {
       set({ state: null, error: error instanceof Error ? error.message : '无法连接服务，请重试' })
-    } finally { set({ loading: false }) }
+    } finally {
+      set({ loading: false })
+    }
   },
 
   async refreshIdentity() {
@@ -63,7 +92,13 @@ export const useApp = create<AppStore>((set, get) => ({
         if (accessExpired(result.code)) {
           ++contextVersion
           const configured = get().identityStatus?.configured ?? true
-          set({ state: null, identityStatus: { account: null, companies: [], actingOrgId: null, configured }, choosingCompany: false, error: result.message, route: { page: 'dashboard' } })
+          set({
+            state: null,
+            identityStatus: { account: null, companies: [], actingOrgId: null, configured },
+            choosingCompany: false,
+            error: result.message,
+            route: { page: 'dashboard' }
+          })
           get().toast('info', '登录会话已结束，请重新登录')
           return
         }
@@ -71,15 +106,25 @@ export const useApp = create<AppStore>((set, get) => ({
       }
       const status = result.data as IdentityStatus
       const previous = get().identityStatus
-      const changed = previous?.account?.id !== status.account?.id || previous?.actingOrgId !== status.actingOrgId
+      const changed =
+        previous?.account?.id !== status.account?.id || previous?.actingOrgId !== status.actingOrgId
       const company = status.companies.find((item) => item.id === status.actingOrgId)
-      const previousRole = previous?.companies.find((item) => item.id === previous.actingOrgId)?.role
+      const previousRole = previous?.companies.find(
+        (item) => item.id === previous.actingOrgId
+      )?.role
       if (previous?.account && (!status.account || (previous.actingOrgId && !company))) {
-        get().toast('info', !status.account ? '登录会话已结束，请重新登录' : '当前企业访问权限已变化，请重新选择企业')
+        get().toast(
+          'info',
+          !status.account ? '登录会话已结束，请重新登录' : '当前企业访问权限已变化，请重新选择企业'
+        )
       } else if (previousRole && company && previousRole !== company.role) {
         get().toast('info', '企业角色已更新，正在重新加载权限')
       }
-      if (changed || previousRole !== company?.role || (get().state && (!status.configured || !status.account || !company))) {
+      if (
+        changed ||
+        previousRole !== company?.role ||
+        (get().state && (!status.configured || !status.account || !company))
+      ) {
         ++contextVersion
         requestVersion = contextVersion
         set({ state: null, route: { page: 'dashboard' } })
@@ -100,21 +145,29 @@ export const useApp = create<AppStore>((set, get) => ({
           if (latest.ok) set({ identityStatus: latest.data as IdentityStatus })
           else if (accessExpired(latest.code)) {
             const configured = get().identityStatus?.configured ?? true
-            set({ identityStatus: { account: null, companies: [], actingOrgId: null, configured }, choosingCompany: false })
+            set({
+              identityStatus: { account: null, companies: [], actingOrgId: null, configured },
+              choosingCompany: false
+            })
           }
         }
       }
     } catch (error) {
       if (requestVersion !== contextVersion) return
       ++contextVersion
-      set({ state: null, error: error instanceof Error ? error.message : '无法验证当前会话，请重试', route: { page: 'dashboard' } })
+      set({
+        state: null,
+        error: error instanceof Error ? error.message : '无法验证当前会话，请重试',
+        route: { page: 'dashboard' }
+      })
     }
   },
 
   async identity<T = unknown>(action: string, body?: unknown): Promise<T | null> {
     const operation = ++operationSeq
     set({ busy: true })
-    if (['logout', 'revoke-all', 'select-company', 'accept-invitation'].includes(action)) ++contextVersion
+    if (['logout', 'revoke-all', 'select-company', 'accept-invitation'].includes(action))
+      ++contextVersion
     if (['select-company', 'accept-invitation'].includes(action)) {
       set({ state: null, route: { page: 'dashboard' } })
     }
@@ -134,19 +187,29 @@ export const useApp = create<AppStore>((set, get) => ({
       if (['logout', 'revoke-all'].includes(action)) {
         ++contextVersion
         const configured = get().identityStatus?.configured ?? true
-        set({ state: null, identityStatus: { account: null, companies: [], actingOrgId: null, configured }, choosingCompany: false, route: { page: 'dashboard' } })
+        set({
+          state: null,
+          identityStatus: { account: null, companies: [], actingOrgId: null, configured },
+          choosingCompany: false,
+          route: { page: 'dashboard' }
+        })
       }
       if (action === 'create-company') set({ choosingCompany: false })
       return res.data as T
     } catch {
       if (version === contextVersion) get().toast('error', '无法连接身份服务，请重试')
       return null
-    } finally { if (operation === operationSeq) set({ busy: false }) }
+    } finally {
+      if (operation === operationSeq) set({ busy: false })
+    }
   },
 
   async selectCompany(orgId) {
     const result = await get().identity('select-company', { orgId })
-    if (result === null) { set({ choosingCompany: true }); return }
+    if (result === null) {
+      set({ choosingCompany: true })
+      return
+    }
     set({ choosingCompany: false, error: null })
     await get().refreshIdentity()
   },
@@ -178,16 +241,22 @@ export const useApp = create<AppStore>((set, get) => ({
     } catch {
       if (version === contextVersion) get().toast('error', '操作失败，请重试')
       return false
-    } finally { if (operation === operationSeq) set({ busy: false }) }
+    } finally {
+      if (operation === operationSeq) set({ busy: false })
+    }
   },
 
-  navigate(route) { set({ route }) },
+  navigate(route) {
+    set({ route })
+  },
   toast(kind, text) {
     const id = ++toastSeq
     set((s) => ({ toasts: [...s.toasts, { id, kind, text }] }))
     setTimeout(() => get().dismissToast(id), kind === 'error' ? 5000 : 2800)
   },
-  dismissToast(id) { set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })) }
+  dismissToast(id) {
+    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
+  }
 }))
 
 export function useView(): ViewState {

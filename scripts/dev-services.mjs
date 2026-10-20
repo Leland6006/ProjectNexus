@@ -33,7 +33,8 @@ async function writeRealmImport(env) {
   const template = await readFile(realmTemplatePath, 'utf8')
   const realm = JSON.parse(template)
   const secret = env.get('OIDC_CLIENT_SECRET')
-  if (!secret || secret.startsWith('REPLACE_WITH')) throw new Error('OIDC_CLIENT_SECRET is missing; run setup first')
+  if (!secret || secret.startsWith('REPLACE_WITH'))
+    throw new Error('OIDC_CLIENT_SECRET is missing; run setup first')
   realm.clients[0].secret = secret
   await mkdir(realmImportDir, { recursive: true })
   await writeFile(realmImportPath, `${JSON.stringify(realm, null, 2)}\n`, { mode: 0o600 })
@@ -45,7 +46,10 @@ async function setup() {
     env = await readLocalEnv()
   } catch (error) {
     if (error.code !== 'ENOENT') throw error
-    await writeFile(envPath, await readFile(resolve(root, '.env.example'), 'utf8'), { flag: 'wx', mode: 0o600 })
+    await writeFile(envPath, await readFile(resolve(root, '.env.example'), 'utf8'), {
+      flag: 'wx',
+      mode: 0o600
+    })
     env = await readLocalEnv()
   }
   const defaults = {
@@ -64,7 +68,8 @@ async function setup() {
     if (!env.get(key) || env.get(key).startsWith('REPLACE_WITH')) env.set(key, value)
   }
   const connectionUrl = `postgresql://${env.get('POSTGRES_USER')}:${encodeURIComponent(env.get('POSTGRES_PASSWORD'))}@127.0.0.1:5432/${env.get('POSTGRES_DB')}`
-  if (!env.get('DATABASE_URL') || env.get('DATABASE_URL').startsWith('REPLACE_WITH')) env.set('DATABASE_URL', connectionUrl)
+  if (!env.get('DATABASE_URL') || env.get('DATABASE_URL').startsWith('REPLACE_WITH'))
+    env.set('DATABASE_URL', connectionUrl)
   const fixed = {
     API_PUBLIC_URL: 'http://127.0.0.1:4318',
     NEXUS_API_URL: 'http://127.0.0.1:4318',
@@ -109,7 +114,8 @@ if (action === 'setup') {
     console.error('Missing .env. Run `node scripts/dev-services.mjs setup` first.')
     process.exitCode = 1
   }
-  if (!process.exitCode) await run('node', ['--env-file=.env', '--experimental-strip-types', 'server/index.ts'])
+  if (!process.exitCode)
+    await run('node', ['--env-file=.env', '--experimental-strip-types', 'server/index.ts'])
 } else if (action === 'app') {
   await setup()
   await run('node', ['--env-file=.env', './node_modules/electron-vite/bin/electron-vite.js', 'dev'])

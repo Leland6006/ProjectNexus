@@ -15,6 +15,8 @@ Electron + electron-vite · React 18 + TypeScript · Tailwind CSS（shadcn 风�
 ```
 npm install        # 安装依赖
 npm run dev        # 开发模式（Electron 窗口）
+npm run format     # 统一格式
+npm run format:check # 格式检查
 npm run typecheck  # 类型检查
 npm test           # 单元测试
 npm run build      # 类型检查 + 生产构建
@@ -40,6 +42,8 @@ npm run dist       # 打包 macOS DMG（未签名）
 
 ## 代码规范
 
+- 使用 `.prettierrc.json`：两空格、单引号、不加分号、100 列、LF；提交前执行 `npm run format:check`。
+- 迁移 SQL 的原始内容参与校验和：保留 `server/schema.sql` 和 TypeScript 模板字符串中的 SQL 原文。
 - TypeScript `strict`，避免 `any`。
 - 界面文字使用简体中文，提交信息使用英文。
 - 组件保持小而清晰；跨页面复用的放 `components/`。

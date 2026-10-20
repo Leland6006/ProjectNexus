@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import type { Comment, Contract, Visibility } from '@shared/types'
-import { COUNSEL_VISIBILITY_LABEL, replyVisibility, visibilityOptions, VISIBILITY_LABEL } from '@shared/editorRules'
+import {
+  COUNSEL_VISIBILITY_LABEL,
+  replyVisibility,
+  visibilityOptions,
+  VISIBILITY_LABEL
+} from '@shared/editorRules'
 import { cn, formatDateTime } from '@/lib/utils'
 import { userLabel } from '@/lib/selectors'
 import { useApp, useView } from '@/store'
@@ -24,7 +29,9 @@ export function CommentsPanel({
   const act = useApp((x) => x.act)
   const busy = useApp((x) => x.busy)
   const [body, setBody] = useState('')
-  const [vis, setVis] = useState<Visibility>(isCounsel ? 'counsel' : canShare ? 'shared' : 'internal')
+  const [vis, setVis] = useState<Visibility>(
+    isCounsel ? 'counsel' : canShare ? 'shared' : 'internal'
+  )
   const [replyTo, setReplyTo] = useState<Comment | null>(null)
 
   const all = s.comments
@@ -38,14 +45,26 @@ export function CommentsPanel({
   const submit = async (): Promise<void> => {
     if (!body.trim()) return
     const effective = replyVisibility(replyTo?.visibility, selected)
-    if (await act('addComment', [contract.id, clauseId, body, effective, replyTo?.id ?? null], replyTo ? '回复已发送' : '评论已发布')) {
+    if (
+      await act(
+        'addComment',
+        [contract.id, clauseId, body, effective, replyTo?.id ?? null],
+        replyTo ? '回复已发送' : '评论已发布'
+      )
+    ) {
       setBody('')
       setReplyTo(null)
     }
   }
 
   const renderComment = (c: Comment, nested = false) => (
-    <div key={c.id} className={cn('rounded-lg border bg-white p-2.5', nested ? 'ml-5 mt-1.5 border-slate-100' : 'border-slate-200')}>
+    <div
+      key={c.id}
+      className={cn(
+        'rounded-lg border bg-white p-2.5',
+        nested ? 'ml-5 mt-1.5 border-slate-100' : 'border-slate-200'
+      )}
+    >
       <div className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
         <span className="font-medium text-ink-900">{userLabel(s, c.authorId)}</span>
         <VisibilityBadge visibility={c.visibility} />
@@ -91,16 +110,32 @@ export function CommentsPanel({
             </button>
           </div>
         )}
-        <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="输入评论…" rows={3} aria-label="评论内容" />
+        <Textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="输入评论…"
+          rows={3}
+          aria-label="评论内容"
+        />
         <div className="mt-2 flex items-center gap-2">
-          <Select value={selected} onChange={(e) => setVis(e.target.value as Visibility)} aria-label="评论可见范围" className="flex-1">
+          <Select
+            value={selected}
+            onChange={(e) => setVis(e.target.value as Visibility)}
+            aria-label="评论可见范围"
+            className="flex-1"
+          >
             {options.map((v) => (
               <option key={v} value={v}>
                 {isCounsel ? COUNSEL_VISIBILITY_LABEL : VISIBILITY_LABEL[v]}
               </option>
             ))}
           </Select>
-          <Button variant="primary" loading={busy} disabled={!body.trim()} onClick={() => void submit()}>
+          <Button
+            variant="primary"
+            loading={busy}
+            disabled={!body.trim()}
+            onClick={() => void submit()}
+          >
             {replyTo ? '回复' : '发表'}
           </Button>
         </div>

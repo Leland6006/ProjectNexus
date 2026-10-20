@@ -45,7 +45,11 @@ function Router() {
     case 'proposals':
       return <Proposals />
     case 'transactions':
-      return route.transactionId ? <TransactionDetail transactionId={route.transactionId} /> : <Transactions />
+      return route.transactionId ? (
+        <TransactionDetail transactionId={route.transactionId} />
+      ) : (
+        <Transactions />
+      )
     case 'contracts':
       return route.contractId ? <ContractEditor contractId={route.contractId} /> : <ContractsPage />
     case 'contacts':
@@ -87,15 +91,25 @@ export default function App() {
           const before = useApp.getState().identityStatus
           await refresh()
           const after = useApp.getState().identityStatus
-          if (!disposed && before?.account?.id === after?.account?.id && before?.actingOrgId === after?.actingOrgId) {
+          if (
+            !disposed &&
+            before?.account?.id === after?.account?.id &&
+            before?.actingOrgId === after?.actingOrgId
+          ) {
             window.dispatchEvent(new Event('nexus:invalidate'))
           }
         }
-      } finally { refreshing = false }
+      } finally {
+        refreshing = false
+      }
     }
-    const unsubscribe = window.nexus.onInvalidate(() => { void invalidate() })
+    const unsubscribe = window.nexus.onInvalidate(() => {
+      void invalidate()
+    })
     const timer = setInterval(() => void invalidate(), 30_000)
-    const onFocus = () => { void invalidate() }
+    const onFocus = () => {
+      void invalidate()
+    }
     window.addEventListener('focus', onFocus)
     return () => {
       disposed = true
@@ -105,7 +119,13 @@ export default function App() {
     }
   }, [mode, refresh])
 
-  if (!loading && !state) return <><IdentityGate /><Toasts /></>
+  if (!loading && !state)
+    return (
+      <>
+        <IdentityGate />
+        <Toasts />
+      </>
+    )
 
   if (loading) {
     return (

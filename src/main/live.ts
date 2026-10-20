@@ -4,14 +4,24 @@ export type LiveSource = {
 }
 
 /** 只解析有界失效帧，业务内容始终由普通鉴权接口重新读取。 */
-export async function readInvalidations(response: Response, signal: AbortSignal, invalidate: () => void): Promise<void> {
-  if (!response.ok || response.headers.get('content-type')?.split(';')[0] !== 'text/event-stream' || !response.body) {
+export async function readInvalidations(
+  response: Response,
+  signal: AbortSignal,
+  invalidate: () => void
+): Promise<void> {
+  if (
+    !response.ok ||
+    response.headers.get('content-type')?.split(';')[0] !== 'text/event-stream' ||
+    !response.body
+  ) {
     await response.body?.cancel()
     throw new Error('实时连接不可用')
   }
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
-  const abort = () => { void reader.cancel().catch(() => undefined) }
+  const abort = () => {
+    void reader.cancel().catch(() => undefined)
+  }
   signal.addEventListener('abort', abort, { once: true })
   let pending = ''
   try {
@@ -24,7 +34,8 @@ export async function readInvalidations(response: Response, signal: AbortSignal,
       while ((end = pending.indexOf('\n\n')) !== -1) {
         const frame = pending.slice(0, end)
         pending = pending.slice(end + 2)
-        if (frame.split('\n').some((line) => line === 'event: invalidate') && !signal.aborted) invalidate()
+        if (frame.split('\n').some((line) => line === 'event: invalidate') && !signal.aborted)
+          invalidate()
       }
     }
   } finally {
@@ -87,11 +98,15 @@ export class LiveSync {
     let opened = false
     try {
       const response = await this.source.openLive(controller.signal)
-      if (controller.signal.aborted || generation !== this.generation) { await response?.body?.cancel(); return }
+      if (controller.signal.aborted || generation !== this.generation) {
+        await response?.body?.cancel()
+        return
+      }
       if (!response) return
       opened = true
       if (!response.ok) {
-        if (response.status === 401 || response.status === 403 || response.status === 409) this.invalidate()
+        if (response.status === 401 || response.status === 403 || response.status === 409)
+          this.invalidate()
         await response.body?.cancel()
         throw new Error('实时连接不可用')
       }
@@ -103,9 +118,17 @@ export class LiveSync {
       this.invalidate()
       const body = response.body
       if (!body) throw new Error('实时连接缺少消息流')
-      const monitored = new Response(body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, stream) { activity(); stream.enqueue(chunk) }
-      })), { status: response.status, headers: response.headers })
+      const monitored = new Response(
+        body.pipeThrough(
+          new TransformStream<Uint8Array, Uint8Array>({
+            transform(chunk, stream) {
+              activity()
+              stream.enqueue(chunk)
+            }
+          })
+        ),
+        { status: response.status, headers: response.headers }
+      )
       await readInvalidations(monitored, controller.signal, () => {
         if (generation === this.generation && !controller.signal.aborted) this.invalidate()
       })
@@ -117,7 +140,13 @@ export class LiveSync {
       if (generation === this.generation) this.controller = null
       if (this.running && generation === this.generation && opened) {
         const backoff = Math.min(30_000, this.retryBase * 2 ** Math.min(this.failures++, 5))
-        this.retry = setTimeout(() => { this.retry = null; void this.connect(generation) }, backoff + Math.floor(Math.random() * this.retryBase / 4))
+        this.retry = setTimeout(
+          () => {
+            this.retry = null
+            void this.connect(generation)
+          },
+          backoff + Math.floor((Math.random() * this.retryBase) / 4)
+        )
       }
     }
   }

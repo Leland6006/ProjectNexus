@@ -1,0 +1,38 @@
+# Dependencies, generated output and local tooling
+node_modules/
+.git/
+.dev/
+out/
+outputs/
+dist/
+release/
+coverage/
+userData/
+test-results/
+playwright-report/
+.vscode/
+.idea/
+.claude/.cc-writes/
+.claude/settings.local.json
+
+# Environment files, credentials and local data
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# npm owns the lockfile layout.
+package-lock.json
+
+# Applied migration checksums depend on the original SQL bytes.
+server/schema.sql
+server/auth.ts
+server/businessSchema.ts
+server/partnerSchema.ts
+server/partnerMessageSchema.ts

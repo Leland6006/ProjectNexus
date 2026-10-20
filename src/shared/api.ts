@@ -34,7 +34,8 @@ export const API_METHODS = [
 
 export type ApiMethod = (typeof API_METHODS)[number]
 
-export type ApiResult = { ok: true; state: ViewState } | { ok: false; code: string; message: string }
+export type ApiResult =
+  { ok: true; state: ViewState } | { ok: false; code: string; message: string }
 
 export interface NexusBridge {
   call(method: ApiMethod, ...args: unknown[]): Promise<ApiResult>

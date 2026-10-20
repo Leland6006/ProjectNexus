@@ -36,16 +36,35 @@ const companies: IdentityStatus['companies'] = [
   { id: 'org-a', name: '测试甲企业', shortName: '测试甲', role: 'owner' },
   { id: 'org-b', name: '测试乙企业', shortName: '测试乙', role: 'legal' }
 ]
-const status = (actingOrgId: string | null = 'org-a'): IdentityStatus => ({ account, companies, actingOrgId, configured: true })
-const anonymous = (): IdentityStatus => ({ account: null, companies: [], actingOrgId: null, configured: true })
-const failure = (code: string): { ok: false; code: string; message: string } => ({ ok: false, code, message: `测试错误：${code}` })
+const status = (actingOrgId: string | null = 'org-a'): IdentityStatus => ({
+  account,
+  companies,
+  actingOrgId,
+  configured: true
+})
+const anonymous = (): IdentityStatus => ({
+  account: null,
+  companies: [],
+  actingOrgId: null,
+  configured: true
+})
+const failure = (code: string): { ok: false; code: string; message: string } => ({
+  ok: false,
+  code,
+  message: `测试错误：${code}`
+})
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (reason: Error) => void
-  const promise = new Promise<T>((accept, fail) => { resolve = accept; reject = fail })
+  const promise = new Promise<T>((accept, fail) => {
+    resolve = accept
+    reject = fail
+  })
   return { promise, resolve, reject }
 }
-const settle = async () => { for (let index = 0; index < 8; index++) await Promise.resolve() }
+const settle = async () => {
+  for (let index = 0; index < 8; index++) await Promise.resolve()
+}
 
 // 每项测试执行实际store模块和真实Zustand，仅替换主进程桥接与提示定时器。
 function harness(overrides: Partial<NexusBridge> = {}) {
@@ -61,16 +80,34 @@ function harness(overrides: Partial<NexusBridge> = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true }
   }).outputText
   const module = { exports: {} as { useApp: TestStore } }
-  runInNewContext(code, { module, exports: module.exports, require: createRequire(import.meta.url), window: { nexus: bridge }, setTimeout: () => 0, Error })
+  runInNewContext(code, {
+    module,
+    exports: module.exports,
+    require: createRequire(import.meta.url),
+    window: { nexus: bridge },
+    setTimeout: () => 0,
+    Error
+  })
   const store = module.exports.useApp
   store.setState({ state: view, mode: 'server', identityStatus: status(), loading: false })
   return { store, bridge }
 }
 
 test('生产启动在匿名、无企业及未配置状态下不请求业务数据', async () => {
-  for (const data of [anonymous(), status(null), { ...status(), companies: [] }, { ...status(), configured: false }]) {
+  for (const data of [
+    anonymous(),
+    status(null),
+    { ...status(), companies: [] },
+    { ...status(), configured: false }
+  ]) {
     let businessCalls = 0
-    const { store } = harness({ identity: async () => ({ ok: true, data }), call: async () => { businessCalls++; return { ok: true, state: view } } })
+    const { store } = harness({
+      identity: async () => ({ ok: true, data }),
+      call: async () => {
+        businessCalls++
+        return { ok: true, state: view }
+      }
+    })
     await store.getState().init()
     assert.equal(businessCalls, 0)
     assert.equal(store.getState().state, null)
@@ -80,7 +117,15 @@ test('生产启动在匿名、无企业及未配置状态下不请求业务数�
 
 test('运行模式失败不回落演示数据且结束加载', async () => {
   let businessCalls = 0
-  const { store } = harness({ mode: async () => { throw new Error('模式读取失败') }, call: async () => { businessCalls++; return { ok: true, state: view } } })
+  const { store } = harness({
+    mode: async () => {
+      throw new Error('模式读取失败')
+    },
+    call: async () => {
+      businessCalls++
+      return { ok: true, state: view }
+    }
+  })
   await store.getState().init()
   assert.equal(businessCalls, 0)
   assert.equal(store.getState().state, null)
@@ -90,7 +135,10 @@ test('运行模式失败不回落演示数据且结束加载', async () => {
 
 for (const code of ['UNAUTHENTICATED', 'ACCOUNT_DISABLED', 'SESSION_EXPIRED']) {
   test(`${code}业务失败清理旧页面和账号后重新获取身份`, async () => {
-    const { store } = harness({ call: async () => failure(code), identity: async () => ({ ok: true, data: anonymous() }) })
+    const { store } = harness({
+      call: async () => failure(code),
+      identity: async () => ({ ok: true, data: anonymous() })
+    })
     store.getState().navigate({ page: 'contracts', contractId: 'old-contract' })
     assert.equal(await store.getState().act('updateClauses', []), false)
     assert.equal(store.getState().state, null)
@@ -113,10 +161,16 @@ test('企业选择门禁内创建企业后可进入服务端自动选中的新�
   let businessCalls = 0
   const { store } = harness({
     identity: async (action) => {
-      if (action === 'create-company') { selected = 'org-b'; return { ok: true, data: { company: companies[1], actingOrgId: selected } } }
+      if (action === 'create-company') {
+        selected = 'org-b'
+        return { ok: true, data: { company: companies[1], actingOrgId: selected } }
+      }
       return { ok: true, data: status(selected) }
     },
-    call: async () => { businessCalls++; return { ok: true, state: view } }
+    call: async () => {
+      businessCalls++
+      return { ok: true, state: view }
+    }
   })
   store.getState().chooseCompany()
   assert.notEqual(await store.getState().identity('create-company', { name: '测试乙企业' }), null)
@@ -162,7 +216,12 @@ test('旧身份错误恢复的第二次status不覆盖退出后的匿名身份',
   let statusCalls = 0
   const { store } = harness({
     call: async () => failure('MEMBERSHIP_REQUIRED'),
-    identity: async (action) => action !== 'status' ? { ok: true, data: {} } : ++statusCalls === 1 ? { ok: true, data: status() } : latest.promise
+    identity: async (action) =>
+      action !== 'status'
+        ? { ok: true, data: {} }
+        : ++statusCalls === 1
+          ? { ok: true, data: status() }
+          : latest.promise
   })
   const refresh = store.getState().refreshIdentity()
   await settle()
@@ -175,7 +234,11 @@ test('旧身份错误恢复的第二次status不覆盖退出后的匿名身份',
 })
 
 test('首次身份变更后业务请求抛错仍结束加载并呈现重试错误', async () => {
-  const { store } = harness({ call: async () => { throw new Error('业务连接失败') } })
+  const { store } = harness({
+    call: async () => {
+      throw new Error('业务连接失败')
+    }
+  })
   store.setState({ identityStatus: null, state: null })
   await store.getState().init()
   assert.equal(store.getState().loading, false)

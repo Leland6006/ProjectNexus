@@ -20,7 +20,14 @@ test('data survives a restart (save -> new store -> load)', async () => {
     )
     assert.equal((await handleCall(session, 'switchUser', ['u_b_biz'])).ok, true)
     const created = await handleCall(session, 'createTransaction', [
-      { name: '重启测试交易', type: '采购', counterpartyOrgId: 'org_qiming', amount: 5, expectedSignDate: '2026-12-01', description: '' }
+      {
+        name: '重启测试交易',
+        type: '采购',
+        counterpartyOrgId: 'org_qiming',
+        amount: 5,
+        expectedSignDate: '2026-12-01',
+        description: ''
+      }
     ])
     // u_b_biz belongs to org_yuanhang so org_qiming is a valid counterparty
     assert.equal(created.ok, true)

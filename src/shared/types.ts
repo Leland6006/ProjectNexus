@@ -22,12 +22,7 @@ export interface User {
 }
 
 export type TransactionStatus =
-  | 'draft'
-  | 'negotiating'
-  | 'pending_signature'
-  | 'in_performance'
-  | 'completed'
-  | 'cancelled'
+  'draft' | 'negotiating' | 'pending_signature' | 'in_performance' | 'completed' | 'cancelled'
 
 export type CounterpartyStatus = 'none' | 'invited' | 'joined'
 
@@ -399,11 +394,7 @@ export interface ViewState {
   proposals: Proposal[]
 }
 
-export type NexusErrorCode =
-  | 'PERMISSION_DENIED'
-  | 'NOT_FOUND'
-  | 'INVALID_INPUT'
-  | 'CONFLICT'
+export type NexusErrorCode = 'PERMISSION_DENIED' | 'NOT_FOUND' | 'INVALID_INPUT' | 'CONFLICT'
 
 export class NexusError extends Error {
   code: NexusErrorCode

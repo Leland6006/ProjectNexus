@@ -32,7 +32,11 @@ export function counselGrantOrgIds(user: User, tx: Transaction): string[] {
  *   parties granted them access they must say which one they are acting for
  *   (`asOrgId`); without it the first grant wins, which is only a fallback.
  */
-export function effectiveOrgId(user: User, tx: Transaction, asOrgId?: string | null): string | null {
+export function effectiveOrgId(
+  user: User,
+  tx: Transaction,
+  asOrgId?: string | null
+): string | null {
   if (user.role === 'external_counsel') {
     const grants = counselGrantOrgIds(user, tx)
     if (grants.length === 0) return null
@@ -60,7 +64,12 @@ export function isOwnerMember(user: User, tx: Transaction): boolean {
   return user.role !== 'external_counsel' && user.orgId === tx.initiatorOrgId
 }
 
-export function canViewContract(user: User, tx: Transaction, contract: Contract, asOrgId?: string | null): boolean {
+export function canViewContract(
+  user: User,
+  tx: Transaction,
+  contract: Contract,
+  asOrgId?: string | null
+): boolean {
   const org = effectiveOrgId(user, tx, asOrgId)
   if (!org) return false
   if (org === tx.initiatorOrgId) return true
@@ -131,7 +140,8 @@ export function buildViewState(db: Database, userId: string, opts: ViewOptions =
       return {
         ...t,
         counselGrants: t.counselGrants.filter(
-          (g) => g.grantedByOrgId === org && (user.role !== 'external_counsel' || g.userId === user.id)
+          (g) =>
+            g.grantedByOrgId === org && (user.role !== 'external_counsel' || g.userId === user.id)
         )
       }
     })
@@ -142,7 +152,9 @@ export function buildViewState(db: Database, userId: string, opts: ViewOptions =
   })
   const contractById = new Map(contracts.map((c) => [c.id, c]))
 
-  const inVisibleContract = <T extends { contractId: string; createdAt: string }>(item: T): boolean => {
+  const inVisibleContract = <T extends { contractId: string; createdAt: string }>(
+    item: T
+  ): boolean => {
     const contract = contractById.get(item.contractId)
     const tx = contract && txById.get(contract.transactionId)
     return !!contract && !!tx && afterShare(user, tx, contract, item.createdAt, asOrgId)
@@ -185,8 +197,11 @@ export function buildViewState(db: Database, userId: string, opts: ViewOptions =
     const tx = txById.get(p.transactionId)
     if (!tx || !visibleTxIds.has(p.transactionId)) return false
     // Proposals contain derived internal financial information, including their prose.
-    return user.role !== 'external_counsel' && effectiveOrgId(user, tx, asOrgId) === p.orgId &&
+    return (
+      user.role !== 'external_counsel' &&
+      effectiveOrgId(user, tx, asOrgId) === p.orgId &&
       (!p.contractId || contractById.has(p.contractId))
+    )
   })
 
   const activities = db.activities.filter((a) => {

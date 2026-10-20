@@ -27,8 +27,20 @@ test('diffText reconstructs both sides exactly', () => {
   const a = '违约金总额不超过合同总价款的10%。'
   const b = '违约金总额不超过合同总价款的5%，以实际损失为限。'
   const segs = diffText(a, b)
-  assert.equal(segs.filter((s) => s.op !== 'insert').map((s) => s.text).join(''), a)
-  assert.equal(segs.filter((s) => s.op !== 'delete').map((s) => s.text).join(''), b)
+  assert.equal(
+    segs
+      .filter((s) => s.op !== 'insert')
+      .map((s) => s.text)
+      .join(''),
+    a
+  )
+  assert.equal(
+    segs
+      .filter((s) => s.op !== 'delete')
+      .map((s) => s.text)
+      .join(''),
+    b
+  )
 })
 
 test('diffClauses detects added, removed, modified and unchanged', () => {
@@ -52,7 +64,10 @@ test('identical text yields a single equal segment', () => {
 
 function reconstruct(segs: { op: string; text: string }[], keep: 'old' | 'new'): string {
   const drop = keep === 'old' ? 'insert' : 'delete'
-  return segs.filter((s) => s.op !== drop).map((s) => s.text).join('')
+  return segs
+    .filter((s) => s.op !== drop)
+    .map((s) => s.text)
+    .join('')
 }
 
 test('a single edit inside a long document stays exact', () => {
@@ -78,14 +93,20 @@ test('a long document with one edit stays responsive', () => {
 
   const started = Date.now()
   diffText(a, b)
-  assert.ok(Date.now() - started < 2000, `diff took ${Date.now() - started}ms on a 15k token document`)
+  assert.ok(
+    Date.now() - started < 2000,
+    `diff took ${Date.now() - started}ms on a 15k token document`
+  )
 })
 
 test('a wholesale rewrite degrades to a block replacement instead of exploding', () => {
   const a = '甲'.repeat(1500)
   const b = '乙'.repeat(1500)
   const segs = diffText(a, b)
-  assert.deepEqual(segs.map((s) => s.op), ['delete', 'insert'])
+  assert.deepEqual(
+    segs.map((s) => s.op),
+    ['delete', 'insert']
+  )
   assert.equal(reconstruct(segs, 'old'), a)
   assert.equal(reconstruct(segs, 'new'), b)
 })

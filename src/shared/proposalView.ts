@@ -113,7 +113,10 @@ export function sortForReview(proposals: Proposal[]): Proposal[] {
  * see are reported as missing rather than silently dropped: a proposal whose reasoning
  * is partly invisible must not look fully sourced.
  */
-export function claimsForProposal(claims: Claim[], proposal: Proposal): { found: Claim[]; missing: string[] } {
+export function claimsForProposal(
+  claims: Claim[],
+  proposal: Proposal
+): { found: Claim[]; missing: string[] } {
   const byId = new Map(claims.map((c) => [c.id, c]))
   const found: Claim[] = []
   const missing: string[] = []
@@ -127,11 +130,13 @@ export function claimsForProposal(claims: Claim[], proposal: Proposal): { found:
 
 /** Facts first, then inferences, then recommendations — the order a human should read. */
 export function sortClaimsByStatus(claims: Claim[]): Claim[] {
-  const rank = (c: Claim): number => (c.status === 'confirmed' ? 0 : c.status === 'inferred' ? 1 : 2)
+  const rank = (c: Claim): number =>
+    c.status === 'confirmed' ? 0 : c.status === 'inferred' ? 1 : 2
   return [...claims].sort((a, b) => {
     const d = rank(a) - rank(b)
     if (d !== 0) return d
-    if (a.transactionId !== b.transactionId) return (a.transactionId ?? '').localeCompare(b.transactionId ?? '')
+    if (a.transactionId !== b.transactionId)
+      return (a.transactionId ?? '').localeCompare(b.transactionId ?? '')
     return b.asOf.localeCompare(a.asOf)
   })
 }
@@ -141,7 +146,9 @@ export function sortClaimsByStatus(claims: Claim[]): Claim[] {
  * UI compares these to tell "the advice changed" apart from "nothing new to decide".
  */
 export function proposalSignature(p: Proposal): string {
-  return [p.title, p.rationale, ...p.actions.map((a) => `${a.kind}:${a.title}:${a.detail}`)].join('|')
+  return [p.title, p.rationale, ...p.actions.map((a) => `${a.kind}:${a.title}:${a.detail}`)].join(
+    '|'
+  )
 }
 
 /** Everything awaiting promotion to a fact. Only a person can clear this queue. */

@@ -15,8 +15,18 @@ export interface ServerConfig {
 
 function endpoint(value: string, name: string, development: boolean): string {
   const url = new URL(value)
-  if (url.username || url.password || url.search || url.hash || (url.protocol !== 'https:' &&
-    !(development && url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)))) {
+  if (
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    (url.protocol !== 'https:' &&
+      !(
+        development &&
+        url.protocol === 'http:' &&
+        ['localhost', '127.0.0.1'].includes(url.hostname)
+      ))
+  ) {
     throw new Error(`${name} must be HTTPS (loopback HTTP is development-only)`)
   }
   return url.toString().replace(/\/$/, '')
@@ -30,7 +40,8 @@ export function readConfig(env = process.env): ServerConfig {
   }
   const development = env.NODE_ENV === 'development'
   const encryptionKey = Buffer.from(required('SESSION_ENCRYPTION_KEY'), 'base64')
-  if (encryptionKey.length !== 32) throw new Error('SESSION_ENCRYPTION_KEY must be 32 random bytes encoded as base64')
+  if (encryptionKey.length !== 32)
+    throw new Error('SESSION_ENCRYPTION_KEY must be 32 random bytes encoded as base64')
   const port = Number(env.PORT ?? 4318)
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT')
   const publicUrl = endpoint(required('API_PUBLIC_URL'), 'API_PUBLIC_URL', development)
@@ -38,10 +49,14 @@ export function readConfig(env = process.env): ServerConfig {
   return {
     databaseUrl: required('DATABASE_URL'),
     issuer: endpoint(required('OIDC_ISSUER'), 'OIDC_ISSUER', development),
-    clientId: required('OIDC_CLIENT_ID'), clientSecret: required('OIDC_CLIENT_SECRET'),
+    clientId: required('OIDC_CLIENT_ID'),
+    clientSecret: required('OIDC_CLIENT_SECRET'),
     publicUrl,
     accountUrl: endpoint(required('OIDC_ACCOUNT_URL'), 'OIDC_ACCOUNT_URL', development),
-    encryptionKey, host: env.HOST ?? '127.0.0.1', port, development
+    encryptionKey,
+    host: env.HOST ?? '127.0.0.1',
+    port,
+    development
   }
 }
 

@@ -3,8 +3,20 @@
 // (Still a DEMO: switching accounts is unauthenticated by design.)
 
 import { confirmClaim, mergeClaim } from '../shared/context.ts'
-import { buildViewState, canSeeItem, canViewTransaction, effectiveOrgId } from '../shared/permissions.ts'
-import { NO_LLM, runOrchestrator, approveProposal, rejectProposal, isDuplicateProposal, type LlmClient } from '../shared/orchestrator.ts'
+import {
+  buildViewState,
+  canSeeItem,
+  canViewTransaction,
+  effectiveOrgId
+} from '../shared/permissions.ts'
+import {
+  NO_LLM,
+  runOrchestrator,
+  approveProposal,
+  rejectProposal,
+  isDuplicateProposal,
+  type LlmClient
+} from '../shared/orchestrator.ts'
 import { createSeedDatabase, DEFAULT_USER_ID } from '../shared/seed.ts'
 import { NexusService, type ActorContext } from '../shared/service.ts'
 import type { ApiMethod, ApiResult } from '../shared/api.ts'
@@ -22,7 +34,11 @@ export interface Session {
   actor: ActorContext
 }
 
-export function createSession(db: Database, currentUserId: string, onChange: (s: Session) => void): Session {
+export function createSession(
+  db: Database,
+  currentUserId: string,
+  onChange: (s: Session) => void
+): Session {
   const session: Session = {
     service: null as unknown as NexusService,
     currentUserId,
@@ -46,7 +62,15 @@ export function setLlmClient(client: LlmClient | null): void {
 const activeRuns = new WeakMap<Session, Map<string, symbol>>()
 
 function analysisInputs(db: Database): string {
-  return JSON.stringify([db.users, db.transactions, db.contracts, db.versions, db.costItems, db.cashAccounts, db.claims])
+  return JSON.stringify([
+    db.users,
+    db.transactions,
+    db.contracts,
+    db.versions,
+    db.costItems,
+    db.cashAccounts,
+    db.claims
+  ])
 }
 
 /** Runs the agent graph for a transaction and persists only a still-current result. */
@@ -69,20 +93,34 @@ export async function runAgentsFor(session: Session, transactionId: string): Pro
       now: new Date().toISOString(),
       representingOrgId
     })
-    if (runs.get(key) !== token || session.currentUserId !== userId ||
-        session.actor.representingOrgId !== representingOrgId || analysisInputs(db) !== baseline) {
+    if (
+      runs.get(key) !== token ||
+      session.currentUserId !== userId ||
+      session.actor.representingOrgId !== representingOrgId ||
+      analysisInputs(db) !== baseline
+    ) {
       throw new NexusError('CONFLICT', '分析期间数据或身份已变更，请重新分析')
     }
     const claimIds = new Map<string, string>()
     for (const c of result.claims) claimIds.set(c.id, mergeClaim(db.claims, c).claim.id)
-    if (result.proposal) result.proposal.claimIds = [...new Set(result.proposal.claimIds.map((id) => claimIds.get(id) ?? id))]
+    if (result.proposal)
+      result.proposal.claimIds = [
+        ...new Set(result.proposal.claimIds.map((id) => claimIds.get(id) ?? id))
+      ]
     if (result.proposal) {
       if (isDuplicateProposal(db, result.proposal)) {
         // Refresh the draft already waiting: newest numbers, re-based on the current version.
         const existing = db.proposals.find(
-          (p) => p.transactionId === result.proposal!.transactionId && p.orgId === result.proposal!.orgId && p.status === 'pending'
+          (p) =>
+            p.transactionId === result.proposal!.transactionId &&
+            p.orgId === result.proposal!.orgId &&
+            p.status === 'pending'
         )!
-        Object.assign(existing, { ...result.proposal, id: existing.id, createdAt: existing.createdAt })
+        Object.assign(existing, {
+          ...result.proposal,
+          id: existing.id,
+          createdAt: existing.createdAt
+        })
       } else {
         db.proposals.push(result.proposal)
       }
@@ -99,11 +137,16 @@ function str(v: unknown): string {
 }
 
 function obj<T>(v: unknown): T {
-  if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new NexusError('INVALID_INPUT', '参数无效')
+  if (typeof v !== 'object' || v === null || Array.isArray(v))
+    throw new NexusError('INVALID_INPUT', '参数无效')
   return v as T
 }
 
-export async function handleCall(session: Session, method: unknown, args: unknown[]): Promise<ApiResult> {
+export async function handleCall(
+  session: Session,
+  method: unknown,
+  args: unknown[]
+): Promise<ApiResult> {
   try {
     if (typeof method !== 'string' || !(API_METHODS as readonly string[]).includes(method)) {
       throw new NexusError('INVALID_INPUT', '未知操作')
@@ -163,7 +206,12 @@ export async function handleCall(session: Session, method: unknown, args: unknow
         s.grantCounsel(me, str(args[0]), str(args[1]))
         break
       case 'createContract':
-        s.createContract(me, str(args[0]), str(args[1]), args[2] === undefined ? undefined : str(args[2]))
+        s.createContract(
+          me,
+          str(args[0]),
+          str(args[1]),
+          args[2] === undefined ? undefined : str(args[2])
+        )
         break
       case 'shareContract':
         s.shareContract(me, str(args[0]))
@@ -188,11 +236,23 @@ export async function handleCall(session: Session, method: unknown, args: unknow
         break
       }
       case 'approveProposal':
-        approveProposal({ db: s.db, proposalId: str(args[0]), userId: me, at: new Date().toISOString(), representingOrgId: session.actor.representingOrgId })
+        approveProposal({
+          db: s.db,
+          proposalId: str(args[0]),
+          userId: me,
+          at: new Date().toISOString(),
+          representingOrgId: session.actor.representingOrgId
+        })
         s.notifyChanged()
         break
       case 'rejectProposal':
-        rejectProposal({ db: s.db, proposalId: str(args[0]), userId: me, at: new Date().toISOString(), representingOrgId: session.actor.representingOrgId })
+        rejectProposal({
+          db: s.db,
+          proposalId: str(args[0]),
+          userId: me,
+          at: new Date().toISOString(),
+          representingOrgId: session.actor.representingOrgId
+        })
         s.notifyChanged()
         break
       case 'confirmClaim': {
@@ -205,9 +265,12 @@ export async function handleCall(session: Session, method: unknown, args: unknow
         const asOrgId = session.actor.representingOrgId
         if (claim.transactionId) {
           const tx = s.db.transactions.find((t) => t.id === claim.transactionId)
-          if (!tx || !canViewTransaction(user, tx, asOrgId)) throw new NexusError('NOT_FOUND', '信息不存在')
-          if (effectiveOrgId(user, tx, asOrgId) !== claim.orgId) throw new NexusError('PERMISSION_DENIED', '无权确认该信息')
-          if (!canSeeItem(user, tx, claim, asOrgId)) throw new NexusError('PERMISSION_DENIED', '无权确认该信息')
+          if (!tx || !canViewTransaction(user, tx, asOrgId))
+            throw new NexusError('NOT_FOUND', '信息不存在')
+          if (effectiveOrgId(user, tx, asOrgId) !== claim.orgId)
+            throw new NexusError('PERMISSION_DENIED', '无权确认该信息')
+          if (!canSeeItem(user, tx, claim, asOrgId))
+            throw new NexusError('PERMISSION_DENIED', '无权确认该信息')
         } else if (claim.orgId !== user.orgId) {
           throw new NexusError('PERMISSION_DENIED', '无权确认该信息')
         }
@@ -226,8 +289,16 @@ export async function handleCall(session: Session, method: unknown, args: unknow
         break
       case 'addComment': {
         const vis = str(args[3])
-        if (vis !== 'shared' && vis !== 'internal' && vis !== 'counsel') throw new NexusError('INVALID_INPUT', '参数无效')
-        s.addComment(me, str(args[0]), str(args[1]), str(args[2]), vis, args[4] == null ? null : str(args[4]))
+        if (vis !== 'shared' && vis !== 'internal' && vis !== 'counsel')
+          throw new NexusError('INVALID_INPUT', '参数无效')
+        s.addComment(
+          me,
+          str(args[0]),
+          str(args[1]),
+          str(args[2]),
+          vis,
+          args[4] == null ? null : str(args[4])
+        )
         break
       }
       case 'createSuggestion':
@@ -238,7 +309,8 @@ export async function handleCall(session: Session, method: unknown, args: unknow
         break
       case 'sendMessage': {
         const vis = str(args[2])
-        if (vis !== 'shared' && vis !== 'internal') throw new NexusError('INVALID_INPUT', '参数无效')
+        if (vis !== 'shared' && vis !== 'internal')
+          throw new NexusError('INVALID_INPUT', '参数无效')
         s.sendMessage(me, str(args[0]), str(args[1]), vis)
         break
       }

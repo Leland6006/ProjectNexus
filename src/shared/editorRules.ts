@@ -58,7 +58,10 @@ export function visibilityOptions(opts: {
 }
 
 /** Clamp a reply's visibility to the scope of the comment being replied to. */
-export function replyVisibility(parent: Visibility | null | undefined, chosen: Visibility): Visibility {
+export function replyVisibility(
+  parent: Visibility | null | undefined,
+  chosen: Visibility
+): Visibility {
   if (parent && parent !== 'shared' && chosen === 'shared') return parent
   return chosen
 }
@@ -82,7 +85,10 @@ export function sortVersionsDesc(versions: ContractVersion[]): ContractVersion[]
 }
 
 /** The version immediately before `selected`, or undefined when it is the first one. */
-export function previousVersion(versionsDesc: ContractVersion[], selected: ContractVersion | undefined): ContractVersion | undefined {
+export function previousVersion(
+  versionsDesc: ContractVersion[],
+  selected: ContractVersion | undefined
+): ContractVersion | undefined {
   if (!selected) return undefined
   return versionsDesc.find((v) => v.number === selected.number - 1)
 }

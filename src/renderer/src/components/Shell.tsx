@@ -1,5 +1,16 @@
 import { useState, type ReactNode } from 'react'
-import { Building2, ChevronDown, FileText, Handshake, LayoutDashboard, MessagesSquare, ShieldAlert, Sparkles, Users, Workflow } from 'lucide-react'
+import {
+  Building2,
+  ChevronDown,
+  FileText,
+  Handshake,
+  LayoutDashboard,
+  MessagesSquare,
+  ShieldAlert,
+  Sparkles,
+  Users,
+  Workflow
+} from 'lucide-react'
 import { IDENTITY_ROLE_LABEL } from '@shared/identity'
 import { ROLE_LABEL } from '@shared/types'
 import { pendingCount } from '@shared/proposalView'
@@ -43,7 +54,9 @@ function AccountSwitcher() {
         aria-expanded={open}
         className="flex w-full items-center gap-2.5 rounded-lg border border-slate-200 bg-white p-2 text-left shadow-sm hover:bg-slate-50"
       >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">{me.name.slice(0, 1)}</span>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+          {me.name.slice(0, 1)}
+        </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{me.name}</span>
           <span className="block truncate text-xs text-ink-500">
@@ -55,7 +68,10 @@ function AccountSwitcher() {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <ul role="listbox" className="absolute bottom-full left-3 right-3 z-20 mb-1 max-h-96 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
+          <ul
+            role="listbox"
+            className="absolute bottom-full left-3 right-3 z-20 mb-1 max-h-96 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl"
+          >
             <li className="px-2 py-1.5 text-xs text-ink-500">切换演示账号（仅本地模拟）</li>
             {accounts.map((u) => (
               <li key={u.id}>
@@ -63,9 +79,14 @@ function AccountSwitcher() {
                   role="option"
                   aria-selected={u.id === me.id}
                   onClick={() => void choose(u.id)}
-                  className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-slate-100', u.id === me.id && 'bg-brand-50')}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-slate-100',
+                    u.id === me.id && 'bg-brand-50'
+                  )}
                 >
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs font-medium">{u.name.slice(0, 1)}</span>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs font-medium">
+                    {u.name.slice(0, 1)}
+                  </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm">{u.name}</span>
                     <span className="block truncate text-xs text-ink-500">
@@ -93,9 +114,14 @@ function RepresentingOrgPicker() {
   const grantIds = counselGrantOrgIds(s)
   if (me.role !== 'external_counsel' || grantIds.length === 0) return null
 
-  const current = s.representingOrgId && grantIds.includes(s.representingOrgId) ? s.representingOrgId : grantIds[0]
+  const current =
+    s.representingOrgId && grantIds.includes(s.representingOrgId)
+      ? s.representingOrgId
+      : grantIds[0]
   if (grantIds.length === 1) {
-    return <span className="text-xs text-ink-500">代表 {orgOf(s, current)?.shortName ?? current}</span>
+    return (
+      <span className="text-xs text-ink-500">代表 {orgOf(s, current)?.shortName ?? current}</span>
+    )
   }
   return (
     <label className="flex items-center gap-1.5 text-xs text-ink-500">
@@ -103,7 +129,13 @@ function RepresentingOrgPicker() {
       <select
         value={current}
         aria-label="选择代表的委托企业"
-        onChange={(e) => void act('setRepresentingOrg', [e.target.value], `已切换为代表 ${orgOf(s, e.target.value)?.shortName}`)}
+        onChange={(e) =>
+          void act(
+            'setRepresentingOrg',
+            [e.target.value],
+            `已切换为代表 ${orgOf(s, e.target.value)?.shortName}`
+          )
+        }
         className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-ink-700"
       >
         {grantIds.map((id) => (
@@ -125,7 +157,69 @@ function IdentityAccountMenu() {
   const [open, setOpen] = useState(false)
   const company = status?.companies.find((item) => item.id === status.actingOrgId)
   const menuClass = 'w-full rounded-md px-3 py-2 text-left text-sm text-ink-700 hover:bg-slate-50'
-  return <div className="relative px-3 pb-3"><button aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full items-center gap-2.5 rounded-lg border border-slate-200 bg-white p-2 text-left shadow-sm"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 font-medium text-brand-700">{status?.account?.name.slice(0, 1)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{status?.account?.name}</span><span className="block truncate text-xs text-ink-500">{company && IDENTITY_ROLE_LABEL[company.role]}</span></span><ChevronDown className="h-4 w-4 text-ink-400" /></button>{open && <><div className="fixed inset-0 z-10" onClick={() => setOpen(false)} /><div role="menu" className="absolute bottom-full left-3 right-3 z-20 mb-2 rounded-lg border border-slate-200 bg-white p-1 shadow-xl"><button role="menuitem" className={menuClass} onClick={() => { setOpen(false); navigate({ page: 'settings' }) }}>账号设置</button><button role="menuitem" className={menuClass} disabled={busy} onClick={() => { setOpen(false); void identity('account-security') }}>安全设置</button><button role="menuitem" className={menuClass} disabled={busy} onClick={async () => { setOpen(false); if (await identity('logout') !== null) await refresh() }}>退出登录</button></div></>}</div>
+  return (
+    <div className="relative px-3 pb-3">
+      <button
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2.5 rounded-lg border border-slate-200 bg-white p-2 text-left shadow-sm"
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 font-medium text-brand-700">
+          {status?.account?.name.slice(0, 1)}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{status?.account?.name}</span>
+          <span className="block truncate text-xs text-ink-500">
+            {company && IDENTITY_ROLE_LABEL[company.role]}
+          </span>
+        </span>
+        <ChevronDown className="h-4 w-4 text-ink-400" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div
+            role="menu"
+            className="absolute bottom-full left-3 right-3 z-20 mb-2 rounded-lg border border-slate-200 bg-white p-1 shadow-xl"
+          >
+            <button
+              role="menuitem"
+              className={menuClass}
+              onClick={() => {
+                setOpen(false)
+                navigate({ page: 'settings' })
+              }}
+            >
+              账号设置
+            </button>
+            <button
+              role="menuitem"
+              className={menuClass}
+              disabled={busy}
+              onClick={() => {
+                setOpen(false)
+                void identity('account-security')
+              }}
+            >
+              安全设置
+            </button>
+            <button
+              role="menuitem"
+              className={menuClass}
+              disabled={busy}
+              onClick={async () => {
+                setOpen(false)
+                if ((await identity('logout')) !== null) await refresh()
+              }}
+            >
+              退出登录
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 function CompanyPicker() {
@@ -133,7 +227,26 @@ function CompanyPicker() {
   const selectCompany = useApp((s) => s.selectCompany)
   const chooseCompany = useApp((s) => s.chooseCompany)
   const busy = useApp((s) => s.busy)
-  return <div className="flex items-center gap-2"><select aria-label="切换工作企业" disabled={busy} value={status?.actingOrgId ?? ''} onChange={(event) => void selectCompany(event.target.value)} className="max-w-72 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-ink-700">{status?.companies.map((company) => <option value={company.id} key={company.id}>{company.name}</option>)}</select><button onClick={chooseCompany} className="text-xs text-brand-600 hover:underline">企业与邀请</button></div>
+  return (
+    <div className="flex items-center gap-2">
+      <select
+        aria-label="切换工作企业"
+        disabled={busy}
+        value={status?.actingOrgId ?? ''}
+        onChange={(event) => void selectCompany(event.target.value)}
+        className="max-w-72 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-ink-700"
+      >
+        {status?.companies.map((company) => (
+          <option value={company.id} key={company.id}>
+            {company.name}
+          </option>
+        ))}
+      </select>
+      <button onClick={chooseCompany} className="text-xs text-brand-600 hover:underline">
+        企业与邀请
+      </button>
+    </div>
+  )
 }
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -152,44 +265,82 @@ export function Shell({ children }: { children: ReactNode }) {
         <div className="drag h-12 shrink-0" />
         <div className="px-4 pb-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-600 text-sm font-bold text-white">N</div>
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-600 text-sm font-bold text-white">
+              N
+            </div>
             <span className="text-base font-semibold tracking-tight">Project Nexus</span>
           </div>
         </div>
         <nav className="flex-1 space-y-0.5 px-3" aria-label="主导航">
-          {NAV.map(({ page, label, icon: Icon, secondary }) => label === '业务与项目' ? (
-            <div key={label} className="flex items-center gap-2.5 px-2.5 pb-1 pt-4 text-xs font-medium text-ink-500"><Icon className="h-4 w-4" />{label}</div>
-          ) : (
-            <button
-              key={label}
-              onClick={() => navigate({ page })}
-              aria-current={active === page ? 'page' : undefined}
-              className={cn(
-                'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors',
-                secondary && 'pl-7 text-xs',
-                active === page ? 'bg-white font-medium text-brand-700 shadow-sm ring-1 ring-slate-200' : 'text-ink-700 hover:bg-slate-100'
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-              {page === 'proposals' && waiting > 0 && (
-                <span className="ml-auto rounded-full bg-amber-100 px-1.5 text-xs font-semibold text-amber-800">{waiting}</span>
-              )}
-            </button>
-          ))}
+          {NAV.map(({ page, label, icon: Icon, secondary }) =>
+            label === '业务与项目' ? (
+              <div
+                key={label}
+                className="flex items-center gap-2.5 px-2.5 pb-1 pt-4 text-xs font-medium text-ink-500"
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </div>
+            ) : (
+              <button
+                key={label}
+                onClick={() => navigate({ page })}
+                aria-current={active === page ? 'page' : undefined}
+                className={cn(
+                  'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors',
+                  secondary && 'pl-7 text-xs',
+                  active === page
+                    ? 'bg-white font-medium text-brand-700 shadow-sm ring-1 ring-slate-200'
+                    : 'text-ink-700 hover:bg-slate-100'
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+                {page === 'proposals' && waiting > 0 && (
+                  <span className="ml-auto rounded-full bg-amber-100 px-1.5 text-xs font-semibold text-amber-800">
+                    {waiting}
+                  </span>
+                )}
+              </button>
+            )
+          )}
         </nav>
-        {mode === 'server' ? <IdentityAccountMenu /> : <><button className="mx-3 mb-2 px-2 text-left text-xs text-ink-500 hover:text-brand-600" onClick={() => navigate({ page: 'settings' })}>演示设置</button><AccountSwitcher /></>}
+        {mode === 'server' ? (
+          <IdentityAccountMenu />
+        ) : (
+          <>
+            <button
+              className="mx-3 mb-2 px-2 text-left text-xs text-ink-500 hover:text-brand-600"
+              onClick={() => navigate({ page: 'settings' })}
+            >
+              演示设置
+            </button>
+            <AccountSwitcher />
+          </>
+        )}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="drag flex h-12 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
           <div className="no-drag flex items-center gap-3 text-xs text-ink-500">
-            {mode === 'server' ? <CompanyPicker /> : <><span className="font-medium text-ink-700">{myOrg?.name}</span><RepresentingOrgPicker /></>}
+            {mode === 'server' ? (
+              <CompanyPicker />
+            ) : (
+              <>
+                <span className="font-medium text-ink-700">{myOrg?.name}</span>
+                <RepresentingOrgPicker />
+              </>
+            )}
           </div>
-          {mode !== 'server' && <div className="no-drag flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700" title="账号切换仅用于本地演示，不是真实的身份认证">
-            <ShieldAlert className="h-3.5 w-3.5" />
-            本地模拟账号 · 演示数据
-          </div>}
+          {mode !== 'server' && (
+            <div
+              className="no-drag flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700"
+              title="账号切换仅用于本地演示，不是真实的身份认证"
+            >
+              <ShieldAlert className="h-3.5 w-3.5" />
+              本地模拟账号 · 演示数据
+            </div>
+          )}
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
       </div>

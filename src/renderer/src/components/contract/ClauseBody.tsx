@@ -33,12 +33,19 @@ export function ClauseBody({
               onClick={() => onSelect(c.id)}
               className={cn(
                 'group mb-4 rounded-lg border px-4 py-3 transition-colors',
-                isActive ? 'border-brand-200 bg-brand-50/30' : 'border-transparent hover:border-slate-200'
+                isActive
+                  ? 'border-brand-200 bg-brand-50/30'
+                  : 'border-transparent hover:border-slate-200'
               )}
             >
               <div className="mb-1 flex items-center justify-between gap-2">
                 {canEdit && isActive ? (
-                  <Input value={c.title} onChange={(e) => onChange(c.id, { title: e.target.value })} aria-label="条款标题" className="font-semibold" />
+                  <Input
+                    value={c.title}
+                    onChange={(e) => onChange(c.id, { title: e.target.value })}
+                    aria-label="条款标题"
+                    className="font-semibold"
+                  />
                 ) : (
                   <h2 className="font-semibold">{c.title}</h2>
                 )}
@@ -56,7 +63,10 @@ export function ClauseBody({
               {canEdit && isActive ? (
                 <ClauseEditor value={c.body} onChange={(html) => onChange(c.id, { body: html })} />
               ) : (
-                <div className="contract-body text-sm" dangerouslySetInnerHTML={{ __html: sanitizeHtml(c.body) }} />
+                <div
+                  className="contract-body text-sm"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(c.body) }}
+                />
               )}
             </article>
           )

@@ -53,12 +53,26 @@ function proposal(over: Partial<Proposal> & { id: string }): Proposal {
 }
 
 function version(id: string, number: number): ContractVersion {
-  return { id, contractId: 'ct_1', number, label: '', note: '', clauses: [], paymentTerms: null, authorId: 'u', createdAt: '' }
+  return {
+    id,
+    contractId: 'ct_1',
+    number,
+    label: '',
+    note: '',
+    clauses: [],
+    paymentTerms: null,
+    authorId: 'u',
+    createdAt: ''
+  }
 }
 
 test('pending count only counts drafts awaiting a person', () => {
   assert.equal(
-    pendingCount([proposal({ id: 'p1' }), proposal({ id: 'p2', status: 'approved' }), proposal({ id: 'p3', status: 'rejected' })]),
+    pendingCount([
+      proposal({ id: 'p1' }),
+      proposal({ id: 'p2', status: 'approved' }),
+      proposal({ id: 'p3', status: 'rejected' })
+    ]),
     1
   )
 })
@@ -79,17 +93,32 @@ test('a draft is stale once a newer version exists', () => {
   const versions = [version('ver_1', 1), version('ver_2', 2)]
   assert.equal(isStaleProposal(versions, proposal({ id: 'p', baseVersionId: 'ver_2' })), false)
   assert.equal(isStaleProposal(versions, proposal({ id: 'p', baseVersionId: 'ver_1' })), true)
-  assert.equal(isStaleProposal([...versions, version('ver_3', 3)], proposal({ id: 'p', baseVersionId: 'ver_2' })), true)
+  assert.equal(
+    isStaleProposal(
+      [...versions, version('ver_3', 3)],
+      proposal({ id: 'p', baseVersionId: 'ver_2' })
+    ),
+    true
+  )
 })
 
 test('a draft without a contract is never stale', () => {
-  assert.equal(isStaleProposal([version('ver_1', 1)], proposal({ id: 'p', contractId: null, baseVersionId: null })), false)
+  assert.equal(
+    isStaleProposal(
+      [version('ver_1', 1)],
+      proposal({ id: 'p', contractId: null, baseVersionId: null })
+    ),
+    false
+  )
 })
 
 test('evidence is returned in the order the draft cites it', () => {
   const a = claim({ id: 'c1' })
   const b = claim({ id: 'c2', key: 'payment.prepay_amount' })
-  const { found, missing } = claimsForProposal([a, b], proposal({ id: 'p', claimIds: ['c2', 'c1', 'c9'] }))
+  const { found, missing } = claimsForProposal(
+    [a, b],
+    proposal({ id: 'p', claimIds: ['c2', 'c1', 'c9'] })
+  )
   assert.deepEqual(
     found.map((c) => c.id),
     ['c2', 'c1']
@@ -122,8 +151,14 @@ test('the confirmation queue excludes facts and superseded records', () => {
 })
 
 test('agent sources render as the specialist that produced them', () => {
-  assert.equal(claimAuthorLabel(claim({ id: 'c', source: { kind: 'agent', ref: 'legal' } })), '法务 Agent')
-  assert.equal(claimAuthorLabel(claim({ id: 'c', source: { kind: 'contract', ref: 'ct_1' } })), '合同')
+  assert.equal(
+    claimAuthorLabel(claim({ id: 'c', source: { kind: 'agent', ref: 'legal' } })),
+    '法务 Agent'
+  )
+  assert.equal(
+    claimAuthorLabel(claim({ id: 'c', source: { kind: 'contract', ref: 'ct_1' } })),
+    '合同'
+  )
 })
 
 test('numeric claims keep their unit in display', () => {

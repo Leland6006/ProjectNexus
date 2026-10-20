@@ -28,7 +28,12 @@ function ClaimRow({ claim, dense }: { claim: Claim; dense?: boolean }) {
   const busy = useApp((x) => x.busy)
   const canConfirm = canPromote(claim)
   return (
-    <li className={cn('flex items-start gap-2 rounded-md border border-slate-100 px-2.5', dense ? 'py-1.5' : 'py-2')}>
+    <li
+      className={cn(
+        'flex items-start gap-2 rounded-md border border-slate-100 px-2.5',
+        dense ? 'py-1.5' : 'py-2'
+      )}
+    >
       <Badge tone={CLAIM_STATUS_TONE[claim.status]}>{CLAIM_STATUS_LABEL[claim.status]}</Badge>
       <div className="min-w-0 flex-1">
         <p className="text-sm text-ink-900">
@@ -41,7 +46,13 @@ function ClaimRow({ claim, dense }: { claim: Claim; dense?: boolean }) {
         </p>
       </div>
       {canConfirm && (
-        <Button size="sm" variant="ghost" loading={busy} onClick={() => void act('confirmClaim', [claim.id], '已确认为企业事实')} title="只有人工确认后，推断才会成为事实">
+        <Button
+          size="sm"
+          variant="ghost"
+          loading={busy}
+          onClick={() => void act('confirmClaim', [claim.id], '已确认为企业事实')}
+          title="只有人工确认后，推断才会成为事实"
+        >
           <ShieldCheck className="h-3.5 w-3.5" />
           确认
         </Button>
@@ -59,7 +70,9 @@ function ProposalCard({ id }: { id: string }) {
   const tx = s.transactions.find((t) => t.id === p.transactionId)
   const stale = isStaleProposal(s.versions, p)
   const { found, missing } = claimsForProposal(s.claims, p)
-  const author = p.createdBy.startsWith('agent:') ? AGENT_LABEL[p.createdBy.slice(6) as keyof typeof AGENT_LABEL] ?? 'Nexus Agent' : '人工起草'
+  const author = p.createdBy.startsWith('agent:')
+    ? (AGENT_LABEL[p.createdBy.slice(6) as keyof typeof AGENT_LABEL] ?? 'Nexus Agent')
+    : '人工起草'
 
   const decide = async (approve: boolean): Promise<void> => {
     const ok = approve
@@ -81,7 +94,10 @@ function ProposalCard({ id }: { id: string }) {
           </p>
         </div>
         {tx && (
-          <Button size="sm" onClick={() => navigate({ page: 'transactions', transactionId: tx.id })}>
+          <Button
+            size="sm"
+            onClick={() => navigate({ page: 'transactions', transactionId: tx.id })}
+          >
             查看交易
           </Button>
         )}
@@ -96,13 +112,21 @@ function ProposalCard({ id }: { id: string }) {
         )}
 
         {missing.length > 0 && (
-          <div role="alert" className="flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800"
+          >
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            {missing.length} 条依据缺失或当前无权查看，暂时无法采纳。请重新运行分析或联系有权查看完整依据的人员处理。
+            {missing.length}{' '}
+            条依据缺失或当前无权查看，暂时无法采纳。请重新运行分析或联系有权查看完整依据的人员处理。
           </div>
         )}
 
-        {p.rationale && <div className="whitespace-pre-line text-sm leading-relaxed text-ink-700">{p.rationale}</div>}
+        {p.rationale && (
+          <div className="whitespace-pre-line text-sm leading-relaxed text-ink-700">
+            {p.rationale}
+          </div>
+        )}
 
         {p.actions.length > 0 && (
           <div>
@@ -110,13 +134,17 @@ function ProposalCard({ id }: { id: string }) {
             <ol className="space-y-1.5">
               {p.actions.map((a, i) => (
                 <li key={i} className="flex items-start gap-2 rounded-md bg-slate-50 px-2.5 py-2">
-                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brand-100 text-[10px] font-semibold text-brand-700">{i + 1}</span>
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brand-100 text-[10px] font-semibold text-brand-700">
+                    {i + 1}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-sm font-medium text-ink-900">{a.title}</span>
                       <Badge>{ACTION_KIND_LABEL[a.kind]}</Badge>
                     </div>
-                    {a.detail !== a.title && <p className="mt-0.5 text-xs text-ink-500">{a.detail}</p>}
+                    {a.detail !== a.title && (
+                      <p className="mt-0.5 text-xs text-ink-500">{a.detail}</p>
+                    )}
                   </div>
                 </li>
               ))}
@@ -126,7 +154,9 @@ function ProposalCard({ id }: { id: string }) {
 
         {found.length > 0 && (
           <div>
-            <p className="mb-1.5 text-xs font-medium text-ink-500">依据（事实、推断与建议分开保存）</p>
+            <p className="mb-1.5 text-xs font-medium text-ink-500">
+              依据（事实、推断与建议分开保存）
+            </p>
             <ul className="space-y-1.5">
               {found.map((c) => (
                 <ClaimRow key={c.id} claim={c} />
@@ -143,7 +173,13 @@ function ProposalCard({ id }: { id: string }) {
             <X className="h-3.5 w-3.5" />
             忽略
           </Button>
-          <Button size="sm" variant="primary" loading={busy} disabled={stale || missing.length > 0} onClick={() => void decide(true)}>
+          <Button
+            size="sm"
+            variant="primary"
+            loading={busy}
+            disabled={stale || missing.length > 0}
+            onClick={() => void decide(true)}
+          >
             <Check className="h-3.5 w-3.5" />
             采纳
           </Button>
@@ -171,15 +207,32 @@ function RunPanel() {
         <Select value={txId} onChange={(e) => setTxId(e.target.value)} aria-label="选择交易项目">
           {runnable.map((t) => (
             <option key={t.id} value={t.id}>
-              {t.name}（{orgOf(s, accessFor(s, t).orgId === t.initiatorOrgId ? t.counterpartyOrgId : t.initiatorOrgId)?.shortName}）
+              {t.name}（
+              {
+                orgOf(
+                  s,
+                  accessFor(s, t).orgId === t.initiatorOrgId
+                    ? t.counterpartyOrgId
+                    : t.initiatorOrgId
+                )?.shortName
+              }
+              ）
             </option>
           ))}
         </Select>
-        <Button variant="primary" loading={busy} disabled={!txId} onClick={() => void run()} className="w-full">
+        <Button
+          variant="primary"
+          loading={busy}
+          disabled={!txId}
+          onClick={() => void run()}
+          className="w-full"
+        >
           <Play className="h-3.5 w-3.5" />
           运行 AI 团队分析
         </Button>
-        <p className="text-xs text-ink-500">每笔交易只保留一条待确认建议；重复运行会用最新条款刷新它，不会堆积。</p>
+        <p className="text-xs text-ink-500">
+          每笔交易只保留一条待确认建议；重复运行会用最新条款刷新它，不会堆积。
+        </p>
       </div>
     </Card>
   )
@@ -237,7 +290,12 @@ export default function Proposals() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={cn('rounded-md px-3 py-1 transition-colors', tab === key ? 'bg-brand-50 font-medium text-brand-700' : 'text-ink-500 hover:text-ink-900')}
+            className={cn(
+              'rounded-md px-3 py-1 transition-colors',
+              tab === key
+                ? 'bg-brand-50 font-medium text-brand-700'
+                : 'text-ink-500 hover:text-ink-900'
+            )}
           >
             {label}
           </button>

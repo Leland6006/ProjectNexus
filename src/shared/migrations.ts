@@ -51,8 +51,10 @@ export const MIGRATIONS: MigrationStep[] = [
       db.cashAccounts ??= []
       db.claims ??= []
       db.proposals ??= []
-      for (const c of db.contracts) if (loose(c).paymentTerms === undefined) loose(c).paymentTerms = null
-      for (const v of db.versions) if (loose(v).paymentTerms === undefined) loose(v).paymentTerms = null
+      for (const c of db.contracts)
+        if (loose(c).paymentTerms === undefined) loose(c).paymentTerms = null
+      for (const v of db.versions)
+        if (loose(v).paymentTerms === undefined) loose(v).paymentTerms = null
       db.schemaVersion = 2
     }
   }
@@ -81,15 +83,17 @@ export function looksLikeDatabase(value: unknown): value is Database {
 }
 
 export type MigrationResult =
-  | { ok: true; db: Database; fromVersion: number }
-  | { ok: false; reason: string }
+  { ok: true; db: Database; fromVersion: number } | { ok: false; reason: string }
 
 /**
  * Bring a raw parsed database up to `CURRENT_SCHEMA_VERSION`.
  * Returns `ok: false` (never a half-migrated database) when the file is from a newer
  * app release or when a required step is missing.
  */
-export function migrateDatabase(raw: unknown, targetVersion: number = CURRENT_SCHEMA_VERSION): MigrationResult {
+export function migrateDatabase(
+  raw: unknown,
+  targetVersion: number = CURRENT_SCHEMA_VERSION
+): MigrationResult {
   if (!looksLikeDatabase(raw)) return { ok: false, reason: '数据文件结构不符合预期' }
 
   const db = raw
@@ -103,7 +107,8 @@ export function migrateDatabase(raw: unknown, targetVersion: number = CURRENT_SC
   let version = declared
   while (version < targetVersion) {
     const step = MIGRATIONS.find((m) => m.from === version)
-    if (!step) return { ok: false, reason: `缺少从 v${version} 升级到 v${targetVersion} 的迁移步骤` }
+    if (!step)
+      return { ok: false, reason: `缺少从 v${version} 升级到 v${targetVersion} 的迁移步骤` }
     step.up(db)
     if (db.schemaVersion !== step.to) db.schemaVersion = step.to
     version = step.to

@@ -2,7 +2,13 @@
 // It operates on an in-memory Database and reports changes through onChange, so the
 // Electron main process can persist to disk and tests can run without any I/O.
 
-import { canViewContract, canViewTransaction, effectiveOrgId, isOwnerMember, isPartyMember } from './permissions.ts'
+import {
+  canViewContract,
+  canViewTransaction,
+  effectiveOrgId,
+  isOwnerMember,
+  isPartyMember
+} from './permissions.ts'
 import { sanitizeHtml } from './sanitize.ts'
 import { TEMPLATES } from './templates.ts'
 import {
@@ -63,7 +69,11 @@ function requireText(value: unknown, field: string, max: number): string {
 }
 
 function requireDate(value: unknown, field: string): string {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value))) {
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+    Number.isNaN(Date.parse(value))
+  ) {
     throw new NexusError('INVALID_INPUT', `${field}格式应为 YYYY-MM-DD`)
   }
   return value
@@ -84,10 +94,22 @@ function sanitizeClauses(clauses: Clause[]): Clause[] {
 }
 
 function clauseToken(clauses: Clause[]): string {
-  if (!Array.isArray(clauses) || clauses.length === 0 || clauses.length > 200 || clauses.some((clause) =>
-    !clause || typeof clause.id !== 'string' || typeof clause.title !== 'string' || typeof clause.body !== 'string' ||
-    clause.id.length > 64 || clause.title.length > 120 || clause.body.length > 100_000
-  )) throw new NexusError('INVALID_INPUT', '条款基础快照无效，请重新载入合同')
+  if (
+    !Array.isArray(clauses) ||
+    clauses.length === 0 ||
+    clauses.length > 200 ||
+    clauses.some(
+      (clause) =>
+        !clause ||
+        typeof clause.id !== 'string' ||
+        typeof clause.title !== 'string' ||
+        typeof clause.body !== 'string' ||
+        clause.id.length > 64 ||
+        clause.title.length > 120 ||
+        clause.body.length > 100_000
+    )
+  )
+    throw new NexusError('INVALID_INPUT', '条款基础快照无效，请重新载入合同')
   return JSON.stringify(clauses.map(({ id, title, body }) => [id, title, body]))
 }
 
@@ -106,7 +128,12 @@ export class NexusService {
   private readonly clock: Clock
   private readonly actor: ActorContext
 
-  constructor(db: Database, onChange: () => void = () => {}, clock: Clock = systemClock, actor: ActorContext = { representingOrgId: null }) {
+  constructor(
+    db: Database,
+    onChange: () => void = () => {},
+    clock: Clock = systemClock,
+    actor: ActorContext = { representingOrgId: null }
+  ) {
     this.db = db
     this.onChange = onChange
     this.clock = clock
@@ -130,7 +157,10 @@ export class NexusService {
     return { tx, orgId: effectiveOrgId(actor, tx, this.actor.representingOrgId)! }
   }
 
-  private contract(actor: User, id: string): { contract: Contract; tx: Transaction; orgId: string } {
+  private contract(
+    actor: User,
+    id: string
+  ): { contract: Contract; tx: Transaction; orgId: string } {
     const contract = this.db.contracts.find((c) => c.id === id)
     if (!contract) throw new NexusError('NOT_FOUND', '合同不存在或无权访问')
     const found = this.tx(actor, contract.transactionId)
@@ -181,27 +211,34 @@ export class NexusService {
   }
 
   private requireOwner(actor: User, tx: Transaction): void {
-    if (!isOwnerMember(actor, tx)) throw new NexusError('PERMISSION_DENIED', '只有交易发起方成员可以执行此操作')
+    if (!isOwnerMember(actor, tx))
+      throw new NexusError('PERMISSION_DENIED', '只有交易发起方成员可以执行此操作')
   }
 
   private requireParty(actor: User, tx: Transaction): void {
-    if (!isPartyMember(actor, tx)) throw new NexusError('PERMISSION_DENIED', '外部律师无权执行此操作')
+    if (!isPartyMember(actor, tx))
+      throw new NexusError('PERMISSION_DENIED', '外部律师无权执行此操作')
   }
 
   private requireEditable(contract: Contract): void {
-    if (contract.status === 'finalized') throw new NexusError('CONFLICT', '合同已确认最终版本，不能再修改')
+    if (contract.status === 'finalized')
+      throw new NexusError('CONFLICT', '合同已确认最终版本，不能再修改')
   }
 
   // ---------- transactions ----------
 
   createTransaction(actorId: string, input: CreateTransactionInput): Transaction {
     const actor = this.user(actorId)
-    if (actor.role === 'external_counsel') throw new NexusError('PERMISSION_DENIED', '外部律师不能创建交易项目')
+    if (actor.role === 'external_counsel')
+      throw new NexusError('PERMISSION_DENIED', '外部律师不能创建交易项目')
     const counterparty = this.db.organizations.find((o) => o.id === input.counterpartyOrgId)
-    if (!counterparty || counterparty.kind !== 'company') throw new NexusError('INVALID_INPUT', '请选择有效的交易对方')
-    if (counterparty.id === actor.orgId) throw new NexusError('INVALID_INPUT', '交易对方不能是本企业')
+    if (!counterparty || counterparty.kind !== 'company')
+      throw new NexusError('INVALID_INPUT', '请选择有效的交易对方')
+    if (counterparty.id === actor.orgId)
+      throw new NexusError('INVALID_INPUT', '交易对方不能是本企业')
     const amount = Number(input.amount)
-    if (!Number.isFinite(amount) || amount < 0 || amount > 1e12) throw new NexusError('INVALID_INPUT', '交易金额无效')
+    if (!Number.isFinite(amount) || amount < 0 || amount > 1e12)
+      throw new NexusError('INVALID_INPUT', '交易金额无效')
     const now = this.clock.now()
     const tx: Transaction = {
       id: uid('tx'),
@@ -221,7 +258,15 @@ export class NexusService {
       updatedAt: now
     }
     this.db.transactions.push(tx)
-    this.log(actor, actor.orgId, tx.id, null, 'transaction_created', `${actor.name} 创建了交易项目「${tx.name}」`, 'internal')
+    this.log(
+      actor,
+      actor.orgId,
+      tx.id,
+      null,
+      'transaction_created',
+      `${actor.name} 创建了交易项目「${tx.name}」`,
+      'internal'
+    )
     this.commit()
     return tx
   }
@@ -229,7 +274,9 @@ export class NexusService {
   updateTransaction(
     actorId: string,
     id: string,
-    patch: Partial<Pick<Transaction, 'name' | 'type' | 'amount' | 'expectedSignDate' | 'description' | 'status'>>
+    patch: Partial<
+      Pick<Transaction, 'name' | 'type' | 'amount' | 'expectedSignDate' | 'description' | 'status'>
+    >
   ): Transaction {
     const actor = this.user(actorId)
     const { tx } = this.tx(actor, id)
@@ -238,18 +285,35 @@ export class NexusService {
     if (patch.type !== undefined) tx.type = requireText(patch.type, '交易类型', 40)
     if (patch.amount !== undefined) {
       const a = Number(patch.amount)
-      if (!Number.isFinite(a) || a < 0 || a > 1e12) throw new NexusError('INVALID_INPUT', '交易金额无效')
+      if (!Number.isFinite(a) || a < 0 || a > 1e12)
+        throw new NexusError('INVALID_INPUT', '交易金额无效')
       tx.amount = a
     }
-    if (patch.expectedSignDate !== undefined) tx.expectedSignDate = requireDate(patch.expectedSignDate, '预计签约时间')
+    if (patch.expectedSignDate !== undefined)
+      tx.expectedSignDate = requireDate(patch.expectedSignDate, '预计签约时间')
     if (patch.description !== undefined) tx.description = String(patch.description).slice(0, 2000)
     if (patch.status !== undefined) {
-      const allowed: TransactionStatus[] = ['draft', 'negotiating', 'pending_signature', 'in_performance', 'completed', 'cancelled']
+      const allowed: TransactionStatus[] = [
+        'draft',
+        'negotiating',
+        'pending_signature',
+        'in_performance',
+        'completed',
+        'cancelled'
+      ]
       if (!allowed.includes(patch.status)) throw new NexusError('INVALID_INPUT', '交易状态无效')
       tx.status = patch.status
     }
     tx.updatedAt = this.clock.now()
-    this.log(actor, actor.orgId, tx.id, null, 'transaction_updated', `${actor.name} 更新了交易项目「${tx.name}」`, 'shared')
+    this.log(
+      actor,
+      actor.orgId,
+      tx.id,
+      null,
+      'transaction_updated',
+      `${actor.name} 更新了交易项目「${tx.name}」`,
+      'shared'
+    )
     this.commit()
     return tx
   }
@@ -263,7 +327,15 @@ export class NexusService {
     tx.counterpartyStatus = 'invited'
     tx.updatedAt = this.clock.now()
     if (tx.status === 'draft') tx.status = 'negotiating'
-    this.log(actor, actor.orgId, tx.id, null, 'counterparty_invited', `${actor.name} 邀请 ${this.orgName(tx.counterpartyOrgId)} 加入交易项目`, 'shared')
+    this.log(
+      actor,
+      actor.orgId,
+      tx.id,
+      null,
+      'counterparty_invited',
+      `${actor.name} 邀请 ${this.orgName(tx.counterpartyOrgId)} 加入交易项目`,
+      'shared'
+    )
     this.commit()
     return tx
   }
@@ -277,7 +349,15 @@ export class NexusService {
     if (tx.counterpartyStatus === 'joined') return tx
     tx.counterpartyStatus = 'joined'
     tx.updatedAt = this.clock.now()
-    this.log(actor, orgId, tx.id, null, 'counterparty_joined', `${actor.name} 代表 ${this.orgName(orgId)} 加入了交易项目`, 'shared')
+    this.log(
+      actor,
+      orgId,
+      tx.id,
+      null,
+      'counterparty_joined',
+      `${actor.name} 代表 ${this.orgName(orgId)} 加入了交易项目`,
+      'shared'
+    )
     this.commit()
     return tx
   }
@@ -287,9 +367,12 @@ export class NexusService {
     const actor = this.user(actorId)
     const { tx, orgId } = this.tx(actor, transactionId)
     this.requireParty(actor, tx)
-    const counsel = this.db.users.find((u) => u.id === counselUserId && u.role === 'external_counsel')
+    const counsel = this.db.users.find(
+      (u) => u.id === counselUserId && u.role === 'external_counsel'
+    )
     if (!counsel) throw new NexusError('NOT_FOUND', '律师账号不存在')
-    if (tx.counselGrants.some((g) => g.userId === counsel.id)) throw new NexusError('CONFLICT', '该律师已获得授权')
+    if (tx.counselGrants.some((g) => g.userId === counsel.id))
+      throw new NexusError('CONFLICT', '该律师已获得授权')
     tx.counselGrants.push({
       userId: counsel.id,
       grantedByOrgId: orgId,
@@ -297,22 +380,35 @@ export class NexusService {
       grantedAt: this.clock.now()
     })
     tx.updatedAt = this.clock.now()
-    this.log(actor, orgId, tx.id, null, 'counsel_invited', `${actor.name} 邀请外部律师 ${counsel.name} 参与本交易`, 'counsel')
+    this.log(
+      actor,
+      orgId,
+      tx.id,
+      null,
+      'counsel_invited',
+      `${actor.name} 邀请外部律师 ${counsel.name} 参与本交易`,
+      'counsel'
+    )
     this.commit()
     return tx
   }
 
   // ---------- contracts ----------
 
-  createContract(actorId: string, transactionId: string, title: string, templateId?: string): Contract {
+  createContract(
+    actorId: string,
+    transactionId: string,
+    title: string,
+    templateId?: string
+  ): Contract {
     const actor = this.user(actorId)
     const { tx } = this.tx(actor, transactionId)
     this.requireOwner(actor, tx)
     const template = templateId ? TEMPLATES.find((t) => t.id === templateId) : undefined
     if (templateId && !template) throw new NexusError('NOT_FOUND', '合同模板不存在')
-    const clauses: Clause[] = (template?.clauses ?? [{ title: '第一条 总则', body: '<p>请在此处输入条款内容。</p>' }]).map(
-      (c) => ({ id: uid('cl'), title: c.title, body: c.body })
-    )
+    const clauses: Clause[] = (
+      template?.clauses ?? [{ title: '第一条 总则', body: '<p>请在此处输入条款内容。</p>' }]
+    ).map((c) => ({ id: uid('cl'), title: c.title, body: c.body }))
     const now = this.clock.now()
     const contract: Contract = {
       id: uid('ct'),
@@ -330,8 +426,22 @@ export class NexusService {
       updatedAt: now
     }
     this.db.contracts.push(contract)
-    this.snapshot(actor, contract, '初稿', template ? `基于模板「${template.name}」创建` : '空白合同', false)
-    this.log(actor, actor.orgId, transactionId, contract.id, 'contract_created', `${actor.name} 创建了合同「${contract.title}」`, 'internal')
+    this.snapshot(
+      actor,
+      contract,
+      '初稿',
+      template ? `基于模板「${template.name}」创建` : '空白合同',
+      false
+    )
+    this.log(
+      actor,
+      actor.orgId,
+      transactionId,
+      contract.id,
+      'contract_created',
+      `${actor.name} 创建了合同「${contract.title}」`,
+      'internal'
+    )
     this.commit()
     return contract
   }
@@ -346,19 +456,35 @@ export class NexusService {
     contract.sharedAt = this.clock.now()
     contract.updatedAt = contract.sharedAt
     if (contract.status === 'draft') contract.status = 'negotiating'
-    this.log(actor, actor.orgId, tx.id, contract.id, 'contract_shared', `${actor.name} 将合同「${contract.title}」共享给 ${this.orgName(tx.counterpartyOrgId)}`, 'shared')
+    this.log(
+      actor,
+      actor.orgId,
+      tx.id,
+      contract.id,
+      'contract_shared',
+      `${actor.name} 将合同「${contract.title}」共享给 ${this.orgName(tx.counterpartyOrgId)}`,
+      'shared'
+    )
     this.commit()
     return contract
   }
 
   /** Replace the clause set of the working draft (owner organisation only). */
-  updateClauses(actorId: string, contractId: string, clauses: Clause[], baseClauses?: Clause[]): Contract {
+  updateClauses(
+    actorId: string,
+    contractId: string,
+    clauses: Clause[],
+    baseClauses?: Clause[]
+  ): Contract {
     const actor = this.user(actorId)
     const { contract, tx } = this.contract(actor, contractId)
     this.requireOwner(actor, tx)
     this.requireEditable(contract)
     if (baseClauses !== undefined && clauseToken(baseClauses) !== clauseToken(contract.clauses)) {
-      throw new NexusError('CONFLICT', '远端合同条款已修改，本地草稿尚未保存。请先复制本地内容，再重新载入最新条款后编辑。')
+      throw new NexusError(
+        'CONFLICT',
+        '远端合同条款已修改，本地草稿尚未保存。请先复制本地内容，再重新载入最新条款后编辑。'
+      )
     }
     contract.clauses = sanitizeClauses(clauses)
     contract.updatedAt = this.clock.now()
@@ -380,15 +506,21 @@ export class NexusService {
       if (!Number.isFinite(terms.prepayRate) || terms.prepayRate < 0 || terms.prepayRate > 1) {
         throw new NexusError('INVALID_INPUT', '预付款比例需在 0 到 1 之间')
       }
-      if (!Number.isInteger(terms.settlementDays) || terms.settlementDays < 0 || terms.settlementDays > 365) {
+      if (
+        !Number.isInteger(terms.settlementDays) ||
+        terms.settlementDays < 0 ||
+        terms.settlementDays > 365
+      ) {
         throw new NexusError('INVALID_INPUT', '账期天数需在 0 到 365 之间')
       }
       let total = terms.prepayRate
       for (const i of terms.instalments) {
-        if (!Number.isFinite(i.rate) || i.rate < 0) throw new NexusError('INVALID_INPUT', '分期比例不能为负')
+        if (!Number.isFinite(i.rate) || i.rate < 0)
+          throw new NexusError('INVALID_INPUT', '分期比例不能为负')
         total += i.rate
       }
-      if (total > 1.000001) throw new NexusError('INVALID_INPUT', '预付款与分期比例合计不能超过 100%')
+      if (total > 1.000001)
+        throw new NexusError('INVALID_INPUT', '预付款与分期比例合计不能超过 100%')
       contract.paymentTerms = structuredClone(terms)
     } else {
       contract.paymentTerms = null
@@ -399,7 +531,13 @@ export class NexusService {
     return contract
   }
 
-  private snapshot(actor: User, contract: Contract, label: string, note: string, log: boolean): ContractVersion {
+  private snapshot(
+    actor: User,
+    contract: Contract,
+    label: string,
+    note: string,
+    log: boolean
+  ): ContractVersion {
     const number = this.db.versions.filter((v) => v.contractId === contract.id).length + 1
     const v: ContractVersion = {
       id: uid('ver'),
@@ -414,7 +552,15 @@ export class NexusService {
     }
     this.db.versions.push(v)
     if (log) {
-      this.log(actor, actor.orgId, contract.transactionId, contract.id, 'version_saved', `${actor.name} 保存了版本 v${number}「${label}」`, this.contractVisibility(contract))
+      this.log(
+        actor,
+        actor.orgId,
+        contract.transactionId,
+        contract.id,
+        'version_saved',
+        `${actor.name} 保存了版本 v${number}「${label}」`,
+        this.contractVisibility(contract)
+      )
     }
     return v
   }
@@ -424,7 +570,13 @@ export class NexusService {
     const { contract, tx } = this.contract(actor, contractId)
     this.requireOwner(actor, tx)
     this.requireEditable(contract)
-    const v = this.snapshot(actor, contract, requireText(label, '版本名称', 60), String(note).slice(0, 500), true)
+    const v = this.snapshot(
+      actor,
+      contract,
+      requireText(label, '版本名称', 60),
+      String(note).slice(0, 500),
+      true
+    )
     // A new version invalidates earlier final-version confirmations.
     contract.finalConfirmedBy = []
     contract.updatedAt = v.createdAt
@@ -442,8 +594,22 @@ export class NexusService {
     contract.clauses = v.clauses.map((c) => ({ ...c }))
     contract.finalConfirmedBy = []
     contract.updatedAt = this.clock.now()
-    const restored = this.snapshot(actor, contract, `恢复自 v${v.number}`, `从历史版本 v${v.number} 恢复`, false)
-    this.log(actor, actor.orgId, tx.id, contract.id, 'version_restored', `${actor.name} 将合同恢复为 v${v.number}，生成新版本 v${restored.number}`, this.contractVisibility(contract))
+    const restored = this.snapshot(
+      actor,
+      contract,
+      `恢复自 v${v.number}`,
+      `从历史版本 v${v.number} 恢复`,
+      false
+    )
+    this.log(
+      actor,
+      actor.orgId,
+      tx.id,
+      contract.id,
+      'version_restored',
+      `${actor.name} 将合同恢复为 v${v.number}，生成新版本 v${restored.number}`,
+      this.contractVisibility(contract)
+    )
     this.commit()
     return contract
   }
@@ -454,7 +620,9 @@ export class NexusService {
     this.requireParty(actor, tx)
     this.requireEditable(contract)
     if (!contract.sharedWithCounterparty) throw new NexusError('CONFLICT', '合同尚未共享给交易对方')
-    const latest = this.db.versions.filter((v) => v.contractId === contractId).sort((a, b) => b.number - a.number)[0]
+    const latest = this.db.versions
+      .filter((v) => v.contractId === contractId)
+      .sort((a, b) => b.number - a.number)[0]
     if (!latest || latest.id !== versionId) throw new NexusError('CONFLICT', '只能确认最新版本')
     if (contract.finalVersionId !== versionId) {
       contract.finalVersionId = versionId
@@ -462,7 +630,9 @@ export class NexusService {
     }
     if (!contract.finalConfirmedBy.includes(orgId)) contract.finalConfirmedBy.push(orgId)
     contract.updatedAt = this.clock.now()
-    const both = [tx.initiatorOrgId, tx.counterpartyOrgId].every((o) => contract.finalConfirmedBy.includes(o))
+    const both = [tx.initiatorOrgId, tx.counterpartyOrgId].every((o) =>
+      contract.finalConfirmedBy.includes(o)
+    )
     if (both) {
       contract.status = 'finalized'
       if (tx.status === 'negotiating' || tx.status === 'draft') tx.status = 'pending_signature'
@@ -474,7 +644,9 @@ export class NexusService {
       tx.id,
       contract.id,
       'final_confirmed',
-      both ? `双方已确认合同最终版本 v${latest.number}` : `${actor.name} 代表 ${this.orgName(orgId)} 确认了版本 v${latest.number}，等待对方确认`,
+      both
+        ? `双方已确认合同最终版本 v${latest.number}`
+        : `${actor.name} 代表 ${this.orgName(orgId)} 确认了版本 v${latest.number}，等待对方确认`,
       'shared'
     )
     this.commit()
@@ -493,10 +665,13 @@ export class NexusService {
   ): Comment {
     const actor = this.user(actorId)
     const { contract, tx, orgId } = this.contract(actor, contractId)
-    if (!contract.clauses.some((c) => c.id === clauseId)) throw new NexusError('NOT_FOUND', '条款不存在')
+    if (!contract.clauses.some((c) => c.id === clauseId))
+      throw new NexusError('NOT_FOUND', '条款不存在')
     // Counsel may only write to their granting organisation (never to the other side).
-    const allowed: Visibility[] = actor.role === 'external_counsel' ? ['counsel'] : ['shared', 'internal', 'counsel']
-    if (!allowed.includes(visibility)) throw new NexusError('PERMISSION_DENIED', '无权使用该可见范围')
+    const allowed: Visibility[] =
+      actor.role === 'external_counsel' ? ['counsel'] : ['shared', 'internal', 'counsel']
+    if (!allowed.includes(visibility))
+      throw new NexusError('PERMISSION_DENIED', '无权使用该可见范围')
     if (visibility === 'shared' && !contract.sharedWithCounterparty) {
       throw new NexusError('CONFLICT', '合同尚未共享，不能发表共享评论')
     }
@@ -507,7 +682,9 @@ export class NexusService {
       // Replying requires being able to see the parent comment.
       const parentVisible =
         parent.visibility === 'shared' ||
-        (parent.visibility === 'internal' && actor.role !== 'external_counsel' && orgId === parent.orgId) ||
+        (parent.visibility === 'internal' &&
+          actor.role !== 'external_counsel' &&
+          orgId === parent.orgId) ||
         (parent.visibility === 'counsel' && orgId === parent.orgId)
       if (!parentVisible) throw new NexusError('NOT_FOUND', '被回复的评论不存在')
       // A reply cannot be wider than its parent's audience (no leaking internal threads).
@@ -543,7 +720,13 @@ export class NexusService {
 
   // ---------- suggestions ----------
 
-  createSuggestion(actorId: string, contractId: string, clauseId: string, proposedBody: string, reason: string): Suggestion {
+  createSuggestion(
+    actorId: string,
+    contractId: string,
+    clauseId: string,
+    proposedBody: string,
+    reason: string
+  ): Suggestion {
     const actor = this.user(actorId)
     const { contract, tx, orgId } = this.contract(actor, contractId)
     this.requireParty(actor, tx)
@@ -552,7 +735,8 @@ export class NexusService {
     const clause = contract.clauses.find((c) => c.id === clauseId)
     if (!clause) throw new NexusError('NOT_FOUND', '条款不存在')
     const proposed = sanitizeHtml(String(proposedBody ?? '')).slice(0, 100_000)
-    if (proposed.trim() === clause.body.trim()) throw new NexusError('INVALID_INPUT', '修改建议与现有内容相同')
+    if (proposed.trim() === clause.body.trim())
+      throw new NexusError('INVALID_INPUT', '修改建议与现有内容相同')
     const s: Suggestion = {
       id: uid('sg'),
       contractId,
@@ -568,7 +752,15 @@ export class NexusService {
       createdAt: this.clock.now()
     }
     this.db.suggestions.push(s)
-    this.log(actor, orgId, tx.id, contract.id, 'suggestion_created', `${actor.name} 对「${clause.title}」提出了修改建议`, 'shared')
+    this.log(
+      actor,
+      orgId,
+      tx.id,
+      contract.id,
+      'suggestion_created',
+      `${actor.name} 对「${clause.title}」提出了修改建议`,
+      'shared'
+    )
     this.commit()
     return s
   }
@@ -610,10 +802,16 @@ export class NexusService {
 
   // ---------- messages ----------
 
-  sendMessage(actorId: string, transactionId: string, body: string, visibility: 'shared' | 'internal'): Message {
+  sendMessage(
+    actorId: string,
+    transactionId: string,
+    body: string,
+    visibility: 'shared' | 'internal'
+  ): Message {
     const actor = this.user(actorId)
     const { tx, orgId } = this.tx(actor, transactionId)
-    if (actor.role === 'external_counsel') throw new NexusError('PERMISSION_DENIED', '外部律师请通过合同评论反馈意见')
+    if (actor.role === 'external_counsel')
+      throw new NexusError('PERMISSION_DENIED', '外部律师请通过合同评论反馈意见')
     if (visibility === 'shared' && tx.counterpartyStatus === 'none') {
       throw new NexusError('CONFLICT', '请先邀请交易对方，再发送共享消息')
     }
@@ -655,12 +853,24 @@ export class NexusService {
       createdAt: this.clock.now()
     }
     this.db.milestones.push(m)
-    this.log(actor, effectiveOrgId(actor, tx, this.actor.representingOrgId)!, tx.id, null, 'milestone_created', `${actor.name} 创建了履约节点「${m.name}」`, 'shared')
+    this.log(
+      actor,
+      effectiveOrgId(actor, tx, this.actor.representingOrgId)!,
+      tx.id,
+      null,
+      'milestone_created',
+      `${actor.name} 创建了履约节点「${m.name}」`,
+      'shared'
+    )
     this.commit()
     return m
   }
 
-  updateMilestone(actorId: string, milestoneId: string, patch: { status?: MilestoneStatus; note?: string }): Milestone {
+  updateMilestone(
+    actorId: string,
+    milestoneId: string,
+    patch: { status?: MilestoneStatus; note?: string }
+  ): Milestone {
     const actor = this.user(actorId)
     const m = this.db.milestones.find((x) => x.id === milestoneId)
     if (!m) throw new NexusError('NOT_FOUND', '履约节点不存在')
@@ -673,7 +883,15 @@ export class NexusService {
       m.status = patch.status
     }
     if (patch.note !== undefined) m.note = String(patch.note).slice(0, 1000)
-    this.log(actor, orgId, tx.id, null, 'milestone_updated', `${actor.name} 更新了履约节点「${m.name}」`, 'shared')
+    this.log(
+      actor,
+      orgId,
+      tx.id,
+      null,
+      'milestone_updated',
+      `${actor.name} 更新了履约节点「${m.name}」`,
+      'shared'
+    )
     this.commit()
     return m
   }

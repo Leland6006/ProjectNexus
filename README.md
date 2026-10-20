@@ -69,13 +69,17 @@ docker compose down
 ## 测试与构建
 
 ```bash
+npm run format      # 统一源码、测试、配置和文档格式
+npm run format:check # 只检查格式（CI 同样执行）
 npm test            # 单元测试（权限、业务流程、版本比较、存储迁移、HTML 清理、编辑器规则）
 npm run typecheck   # TypeScript 类型检查
 npm run build       # 类型检查 + 生产构建
 npm run dist        # 打包 macOS DMG
 ```
 
-推送到 `main` 或发起 PR 时，GitHub Actions（`.github/workflows/ci.yml`）会自动执行 typecheck、测试与构建。
+格式由固定版本 Prettier 管理：两空格缩进、单引号、不加分号、100 列换行目标、LF 行尾；Markdown 保留段落换行，模板字符串中的 SQL/HTML 不重排。`.editorconfig` 和 `.gitattributes` 同步编辑器与跨平台行尾规则。本地环境文件、凭据、生成物和 npm 管理的锁文件不参与格式化。历史迁移的原始 SQL 参与 SHA-256 校验和；`server/schema.sql`、`server/auth.ts`、`server/businessSchema.ts`、`server/partnerSchema.ts` 和 `server/partnerMessageSchema.ts` 保留原文，整文件排除自动格式化。
+
+推送到 `main`、`feat/**`、`fix/**` 或发起 PR 时，GitHub Actions（`.github/workflows/ci.yml`）会自动执行格式检查、typecheck、测试与构建。
 
 ## 打包与签名
 

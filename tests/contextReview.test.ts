@@ -6,7 +6,14 @@ import { runInNewContext } from 'node:vm'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import ts from 'typescript'
-import { buildAgentContext, canPromote, confirmClaim, renderContext, selectPremises, visibleClaims } from '../src/shared/context.ts'
+import {
+  buildAgentContext,
+  canPromote,
+  confirmClaim,
+  renderContext,
+  selectPremises,
+  visibleClaims
+} from '../src/shared/context.ts'
 import { looksLikeDatabase, migrateDatabase } from '../src/shared/migrations.ts'
 import { buildViewState } from '../src/shared/permissions.ts'
 import * as proposalView from '../src/shared/proposalView.ts'
@@ -18,9 +25,21 @@ const AT = '2026-10-19T09:00:00.000Z'
 
 function claim(id: string, overrides: Partial<Claim> = {}): Claim {
   return {
-    id, orgId: ORG_A, transactionId: TX, key: 'payment.prepay_rate', label: id,
-    value: id, numeric: null, unit: null, status: 'confirmed', source: { kind: 'user' },
-    asOf: AT, visibility: 'internal', supersededById: null, confirmedBy: null, confirmedAt: null,
+    id,
+    orgId: ORG_A,
+    transactionId: TX,
+    key: 'payment.prepay_rate',
+    label: id,
+    value: id,
+    numeric: null,
+    unit: null,
+    status: 'confirmed',
+    source: { kind: 'user' },
+    asOf: AT,
+    visibility: 'internal',
+    supersededById: null,
+    confirmedBy: null,
+    confirmedAt: null,
     ...overrides
   }
 }
@@ -28,7 +47,8 @@ function claim(id: string, overrides: Partial<Claim> = {}): Claim {
 test('被替代的事实不进入可见上下文或推理前提，权限与作用域仍生效', () => {
   const db = createSeedDatabase()
   db.claims = [
-    claim('old', { supersededById: 'current' }), claim('current'),
+    claim('old', { supersededById: 'current' }),
+    claim('current'),
     claim('inference', { status: 'inferred' }),
     claim('other-org', { orgId: ORG_B }),
     claim('other-tx', { transactionId: 'other' }),
@@ -37,9 +57,15 @@ test('被替代的事实不进入可见上下文或推理前提，权限与作�
   ]
   const user = db.users.find((u) => u.id === DEFAULT_USER_ID)!
   const tx = db.transactions.find((t) => t.id === TX)!
-  assert.deepEqual(visibleClaims(db, user, tx).map((c) => c.id), ['current', 'inference', 'company', 'cost'])
+  assert.deepEqual(
+    visibleClaims(db, user, tx).map((c) => c.id),
+    ['current', 'inference', 'company', 'cost']
+  )
   const ctx = buildAgentContext(db, DEFAULT_USER_ID, 'legal', TX)
-  assert.deepEqual(ctx.claims.map((c) => c.id), ['current', 'inference', 'company'])
+  assert.deepEqual(
+    ctx.claims.map((c) => c.id),
+    ['current', 'inference', 'company']
+  )
   const selected = selectPremises(db.claims)
   assert.ok(!selected.premises.some((c) => c.id === 'old'))
   assert.ok(selected.excluded.some((c) => c.id === 'old'))
@@ -52,8 +78,11 @@ test('被替代的推断和建议不能人工升级，当前记录仍可确认',
   for (const status of ['inferred', 'recommended'] as const) {
     const old = claim('old', { status, supersededById: 'current' })
     assert.equal(canPromote(old), false)
-    assert.throws(() => confirmClaim(old, DEFAULT_USER_ID, AT), (error: unknown) =>
-      error instanceof NexusError && error.code === 'CONFLICT' && /替代/.test(error.message))
+    assert.throws(
+      () => confirmClaim(old, DEFAULT_USER_ID, AT),
+      (error: unknown) =>
+        error instanceof NexusError && error.code === 'CONFLICT' && /替代/.test(error.message)
+    )
     assert.equal(old.status, status)
     const current = claim('current', { status })
     assert.equal(canPromote(current), true)
@@ -65,8 +94,14 @@ test('被替代的推断和建议不能人工升级，当前记录仍可确认',
 test('条款正文经过清理后带条款ID进入提示，财务视角仍无权读取', () => {
   const db = createSeedDatabase()
   const contract = db.contracts.find((c) => c.id === 'ct_equip')!
-  contract.clauses = [{ ...contract.clauses[0], id: 'clause-evidence', title: '付款约定',
-    body: '<p onclick="bad()">交付后\n  <strong>三十日</strong>付款</p><script>script-secret</script><style>style-secret</style>' }]
+  contract.clauses = [
+    {
+      ...contract.clauses[0],
+      id: 'clause-evidence',
+      title: '付款约定',
+      body: '<p onclick="bad()">交付后\n  <strong>三十日</strong>付款</p><script>script-secret</script><style>style-secret</style>'
+    }
+  ]
   const legal = renderContext(buildAgentContext(db, DEFAULT_USER_ID, 'legal', TX))
   assert.ok(legal.includes('clause-evidence'))
   assert.ok(legal.includes('交付后 三十日 付款'))
@@ -138,29 +173,53 @@ function renderProposalPage(view: ViewState): string {
   const require = createRequire(import.meta.url)
   const filename = new URL('../src/renderer/src/pages/Proposals.tsx', import.meta.url)
   const code = ts.transpileModule(readFileSync(filename, 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true }
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      jsx: ts.JsxEmit.ReactJSX,
+      esModuleInterop: true
+    }
   }).outputText
-  const container = (tag: string) => ({ children, className }: { children?: React.ReactNode; className?: string }) =>
-    React.createElement(tag, { className }, children)
-  const useApp = (selector: (state: unknown) => unknown) => selector({ busy: false, act: async () => true, navigate: () => undefined })
+  const container =
+    (tag: string) =>
+    ({ children, className }: { children?: React.ReactNode; className?: string }) =>
+      React.createElement(tag, { className }, children)
+  const useApp = (selector: (state: unknown) => unknown) =>
+    selector({ busy: false, act: async () => true, navigate: () => undefined })
   const module = { exports: {} as { default: React.ComponentType } }
   const overrides: Record<string, unknown> = {
     '@shared/context': { canPromote },
     '@shared/proposalView': proposalView,
     '@/store': { useView: () => view, useApp },
-    '@/lib/utils': { cn: (...parts: unknown[]) => parts.filter(Boolean).join(' '), formatDateTime: (value: string) => value },
+    '@/lib/utils': {
+      cn: (...parts: unknown[]) => parts.filter(Boolean).join(' '),
+      formatDateTime: (value: string) => value
+    },
     '@/lib/agents': { runAgentAnalysis: async () => undefined },
     '@/lib/selectors': { accessFor: () => ({ isParty: false }), orgOf: () => undefined },
     '@/components/ui': {
-      Badge: container('span'), Card: container('section'), Select: container('select'),
-      Button: ({ children, disabled, onClick, title }: { children?: React.ReactNode; disabled?: boolean; onClick?: () => void; title?: string }) =>
-        React.createElement('button', { disabled, onClick, title }, children),
-      CardHeader: () => null, EmptyState: () => null, PageHeader: () => null
+      Badge: container('span'),
+      Card: container('section'),
+      Select: container('select'),
+      Button: ({
+        children,
+        disabled,
+        onClick,
+        title
+      }: {
+        children?: React.ReactNode
+        disabled?: boolean
+        onClick?: () => void
+        title?: string
+      }) => React.createElement('button', { disabled, onClick, title }, children),
+      CardHeader: () => null,
+      EmptyState: () => null,
+      PageHeader: () => null
     }
   }
   runInNewContext(code, {
-    module, exports: module.exports,
-    require: (id: string) => Object.hasOwn(overrides, id) ? overrides[id] : require(id)
+    module,
+    exports: module.exports,
+    require: (id: string) => (Object.hasOwn(overrides, id) ? overrides[id] : require(id))
   })
   return renderToStaticMarkup(React.createElement(module.exports.default))
 }
@@ -175,14 +234,18 @@ function proposalViewState(): ViewState {
 test('建议页面缺失依据时显示提示并禁用采纳，完整依据仍可采纳', () => {
   const view = proposalViewState()
   const complete = renderProposalPage(view)
-  const completeButton = complete.match(/<button\b[^>]*>[^]*?<\/button>/g)?.find((button) => button.includes('采纳'))
+  const completeButton = complete
+    .match(/<button\b[^>]*>[^]*?<\/button>/g)
+    ?.find((button) => button.includes('采纳'))
   assert.ok(completeButton)
   assert.ok(!completeButton.includes('disabled'))
   const proposal = view.proposals.find((p) => p.status === 'pending')!
   proposal.claimIds.push('missing-evidence')
   const incomplete = renderProposalPage(view)
   assert.match(incomplete, /依据.*缺失|缺少.*依据/)
-  const approveButton = incomplete.match(/<button\b[^>]*>[^]*?<\/button>/g)?.find((button) => button.includes('采纳'))
+  const approveButton = incomplete
+    .match(/<button\b[^>]*>[^]*?<\/button>/g)
+    ?.find((button) => button.includes('采纳'))
   assert.ok(approveButton)
   assert.match(approveButton, /disabled=""/)
 })

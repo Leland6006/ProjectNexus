@@ -1,14 +1,37 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { buildAgentContext, confirmClaim, mergeClaim, selectPremises, visibleClaims } from '../src/shared/context.ts'
-import { detectPaymentTermsChange, diffPaymentTerms, latestVersionPair } from '../src/shared/events.ts'
+import {
+  buildAgentContext,
+  confirmClaim,
+  mergeClaim,
+  selectPremises,
+  visibleClaims
+} from '../src/shared/context.ts'
+import {
+  detectPaymentTermsChange,
+  diffPaymentTerms,
+  latestVersionPair
+} from '../src/shared/events.ts'
 import { forecastCashflow, paymentSchedule } from '../src/shared/finance.ts'
-import { approveProposal, NO_LLM, rejectProposal, routeAgents, runOrchestrator, isDuplicateProposal } from '../src/shared/orchestrator.ts'
+import {
+  approveProposal,
+  NO_LLM,
+  rejectProposal,
+  routeAgents,
+  runOrchestrator,
+  isDuplicateProposal
+} from '../src/shared/orchestrator.ts'
 import { buildViewState } from '../src/shared/permissions.ts'
 import { claimsForProposal } from '../src/shared/proposalView.ts'
 import { createSeedDatabase, DEFAULT_USER_ID, ORG_A, ORG_B } from '../src/shared/seed.ts'
-import { NexusError, type Claim, type ContractVersion, type Database, type PaymentTerms } from '../src/shared/types.ts'
+import {
+  NexusError,
+  type Claim,
+  type ContractVersion,
+  type Database,
+  type PaymentTerms
+} from '../src/shared/types.ts'
 
 const TERMS_A: PaymentTerms = { prepayRate: 0.5, instalments: [], settlementDays: 15 }
 const TERMS_B: PaymentTerms = { prepayRate: 0.1, instalments: [], settlementDays: 15 }
@@ -84,10 +107,7 @@ test('the same change makes the difference between solvent and short', () => {
   const after = forecastCashflow({ transaction: tx, terms: TERMS_B, costs, account })
   assert.equal(after.shortfall, 342_000)
   assert.equal(after.shortfallDate, '2026-11-10')
-  assert.equal(
-    paymentSchedule(tx, TERMS_B).find((l) => l.label === '预付款')?.amount,
-    128_000
-  )
+  assert.equal(paymentSchedule(tx, TERMS_B).find((l) => l.label === '预付款')?.amount, 128_000)
 })
 
 test('routing is a rule, not a model guess', () => {
@@ -206,7 +226,13 @@ test('an inference never overwrites a confirmed fact', () => {
   }
   const confirmed: Claim = { ...base, id: 'cl_1', key: 'payment.prepay_rate', status: 'confirmed' }
   claims.push(confirmed)
-  const inferred: Claim = { ...base, id: 'cl_2', key: 'payment.prepay_rate', status: 'inferred', numeric: 0.1 }
+  const inferred: Claim = {
+    ...base,
+    id: 'cl_2',
+    key: 'payment.prepay_rate',
+    status: 'inferred',
+    numeric: 0.1
+  }
 
   const res = mergeClaim(claims, inferred)
   assert.equal(res.action, 'ignored')
@@ -260,7 +286,10 @@ test('only a person can promote an inference to a fact', () => {
   const confirmed = confirmClaim(inferred, DEFAULT_USER_ID, '2026-10-18T12:00:00.000Z')
   assert.equal(confirmed.status, 'confirmed')
   assert.equal(confirmed.confirmedBy, DEFAULT_USER_ID)
-  assert.throws(() => confirmClaim(confirmed, DEFAULT_USER_ID, '2026-10-18T13:00:00.000Z'), NexusError)
+  assert.throws(
+    () => confirmClaim(confirmed, DEFAULT_USER_ID, '2026-10-18T13:00:00.000Z'),
+    NexusError
+  )
 })
 
 test('inferences are outputs, never premises for another agent', () => {
@@ -301,8 +330,14 @@ test('inferences are outputs, never premises for another agent', () => {
     }
   ]
   const { premises, excluded } = selectPremises(claims)
-  assert.deepEqual(premises.map((c) => c.id), ['cl_1'])
-  assert.deepEqual(excluded.map((c) => c.id), ['cl_2'])
+  assert.deepEqual(
+    premises.map((c) => c.id),
+    ['cl_1']
+  )
+  assert.deepEqual(
+    excluded.map((c) => c.id),
+    ['cl_2']
+  )
 })
 
 test('approval promotes claims, writes a trail, and refuses a stale draft', async () => {
@@ -323,7 +358,12 @@ test('approval promotes claims, writes a trail, and refuses a stale draft', asyn
   db.versions.push(version(3, TERMS_A))
   assert.throws(
     () =>
-      approveProposal({ db, proposalId: proposal.id, userId: DEFAULT_USER_ID, at: '2026-10-18T11:00:00.000Z' }),
+      approveProposal({
+        db,
+        proposalId: proposal.id,
+        userId: DEFAULT_USER_ID,
+        at: '2026-10-18T11:00:00.000Z'
+      }),
     NexusError
   )
 
@@ -340,18 +380,34 @@ test('approval promotes claims, writes a trail, and refuses a stale draft', asyn
   db.claims.push(...fresh.claims)
   db.proposals.push(p2)
 
-  const approved = approveProposal({ db, proposalId: p2.id, userId: DEFAULT_USER_ID, at: '2026-10-18T11:30:00.000Z' })
+  const approved = approveProposal({
+    db,
+    proposalId: p2.id,
+    userId: DEFAULT_USER_ID,
+    at: '2026-10-18T11:30:00.000Z'
+  })
   assert.equal(approved.proposal.status, 'approved')
   assert.ok(approved.claims.length > 0)
   assert.ok(approved.claims.every((c) => c.status === 'confirmed'))
   assert.equal(db.activities.filter((a) => a.type === 'proposal_approved').length, 1)
 
   assert.throws(
-    () => approveProposal({ db, proposalId: p2.id, userId: DEFAULT_USER_ID, at: '2026-10-18T12:00:00.000Z' }),
+    () =>
+      approveProposal({
+        db,
+        proposalId: p2.id,
+        userId: DEFAULT_USER_ID,
+        at: '2026-10-18T12:00:00.000Z'
+      }),
     NexusError
   )
 
-  const rejected = rejectProposal({ db, proposalId: proposal.id, userId: DEFAULT_USER_ID, at: '2026-10-18T12:00:00.000Z' })
+  const rejected = rejectProposal({
+    db,
+    proposalId: proposal.id,
+    userId: DEFAULT_USER_ID,
+    at: '2026-10-18T12:00:00.000Z'
+  })
   assert.equal(rejected.status, 'rejected')
 })
 
