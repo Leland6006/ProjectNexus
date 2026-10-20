@@ -13,6 +13,7 @@ import { createSession, handleCall, type Session } from './handlers.ts'
 import { JsonStore } from './store.ts'
 import { IdentityBridge } from './identity.ts'
 import { LiveSync } from './live.ts'
+import { isTrustedRendererUrl } from './rendererSecurity.ts'
 
 let store: JsonStore
 let session: Session
@@ -30,7 +31,7 @@ function trustedSender(event: IpcMainInvokeEvent): void {
     !BrowserWindow.fromWebContents(event.sender) ||
     !event.senderFrame ||
     event.senderFrame !== event.sender.mainFrame ||
-    event.senderFrame.url.split('#')[0] !== rendererUrl().split('#')[0]
+    !isTrustedRendererUrl(event.senderFrame.url, rendererUrl())
   ) {
     throw new Error('Untrusted IPC sender')
   }
@@ -69,7 +70,7 @@ function createWindow(): void {
     return { action: 'deny' }
   })
   win.webContents.on('will-navigate', (event, url) => {
-    if (url.split('#')[0] === rendererUrl().split('#')[0]) return
+    if (isTrustedRendererUrl(url, rendererUrl())) return
     event.preventDefault()
   })
 
@@ -115,7 +116,7 @@ app.whenReady().then(() => {
         if (
           !win.isDestroyed() &&
           !win.webContents.isDestroyed() &&
-          win.webContents.getURL().split('#')[0] === rendererUrl().split('#')[0]
+          isTrustedRendererUrl(win.webContents.getURL(), rendererUrl())
         )
           win.webContents.send('nexus:invalidate')
       }
