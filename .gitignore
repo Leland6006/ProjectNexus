@@ -18,6 +18,9 @@ coverage/
 npm-debug.log*
 .DS_Store
 
+# Local development runtime secrets and generated identity-provider import
+.dev/
+
 # Local data (databases, user data, test artifacts)
 *.db
 *.sqlite

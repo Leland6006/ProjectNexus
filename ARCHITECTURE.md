@@ -96,7 +96,22 @@ Organization、User、Transaction、Contract、ContractVersion、Comment、Sugge
 - Claim 合并后按实际保留的 ID 重建建议引用，审批与忽略成功后都会触发持久化。
 - 重复运行同一份条款不会产生第二条相同建议（`isDuplicateProposal`），只更新已有结论。
 
-## 未来云端架构
+## 服务端身份开发模式（尚未生产验收）
 
-`src/shared` 的业务引擎与权限函数可直接迁移到服务端；渲染进程的 `window.nexus.call` 替换为 HTTPS/WebSocket 客户端；
-JSON 存储替换为 PostgreSQL；认证由身份服务提供，`currentUserId` 来自会话令牌而非本地切换。
+本地身份模式运行 Electron 主进程、Node API、PostgreSQL 和 OIDC Provider：
+
+```text
+Renderer -> Preload -> Electron Main (内存令牌)
+                         |                  |
+                   PostgreSQL API <--- OIDC 浏览器登录
+                         |                  |
+                  PostgreSQL         Keycloak + Mailpit
+```
+
+本地步骤见 [README.md](README.md#安装与启动)。Keycloak 开发 realm 由 `config/keycloak/nexus-realm.template.json` 导入；`node scripts/dev-services.mjs setup` 从未入库的 `.env` 注入 client secret，生成被忽略的 `.dev/keycloak/import/nexus-dev-realm.json`。redirect URI 必须是精确的 `http://127.0.0.1:4318/auth/callback`，OIDC issuer 也必须使用宿主机映射端口 `127.0.0.1:8080`，不能使用 Compose 内部服务名，否则浏览器与 API 端 issuer 不一致。
+
+服务端从 `server/config.ts` 读取数据库、OIDC、回调、账号页和会话加密配置。登录 token 只在 Electron Main 进程内存中；进程重启会要求重新登录。服务器基于数据库中的身份、会话、成员关系和每次请求时的企业角色执行授权，不能信任 renderer 提交的 user/org/role 字段。
+
+当前业务数据用 PostgreSQL `business_state` 表中的单行 JSONB 全局快照保存，服务端以事务锁串行化请求；身份和企业权限目录保存在独立关系表，业务 JSON 快照剥离 users/organizations。它不是按组织分区的交易关系模型，不能作为生产多租户架构或扩展性保证。
+
+`npm test` 使用 PGlite 在 Node 进程内运行 PostgreSQL WASM；可验证真实 schema、SQL、事务回滚和授权逻辑，但不是独立 PostgreSQL 部署验证，也不覆盖多连接竞争、OIDC/SMTP 网络流程、浏览器回调、生产持久化或双设备验收。Docker/Keycloak 端到端和 6B-D 验收仍待执行。

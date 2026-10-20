@@ -1,11 +1,25 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, session as electronSession, shell } from 'electron'
+import { pathToFileURL } from 'node:url'
+import { app, BrowserWindow, ipcMain, session as electronSession, shell, type IpcMainInvokeEvent } from 'electron'
 import { API_METHODS } from '../shared/api.ts'
 import { createSession, handleCall, type Session } from './handlers.ts'
 import { JsonStore } from './store.ts'
+import { IdentityBridge } from './identity.ts'
 
 let store: JsonStore
 let session: Session
+
+function rendererUrl(): string {
+  return process.env.ELECTRON_RENDERER_URL ?? pathToFileURL(join(__dirname, '../renderer/index.html')).href
+}
+
+function trustedSender(event: IpcMainInvokeEvent): void {
+  if (!BrowserWindow.fromWebContents(event.sender) || !event.senderFrame ||
+    event.senderFrame !== event.sender.mainFrame ||
+    event.senderFrame.url.split('#')[0] !== rendererUrl().split('#')[0]) {
+    throw new Error('Untrusted IPC sender')
+  }
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -36,8 +50,7 @@ function createWindow(): void {
     return { action: 'deny' }
   })
   win.webContents.on('will-navigate', (event, url) => {
-    const devUrl = process.env['ELECTRON_RENDERER_URL']
-    if (devUrl && url.startsWith(devUrl)) return
+    if (url.split('#')[0] === rendererUrl().split('#')[0]) return
     event.preventDefault()
   })
 
@@ -72,15 +85,25 @@ app.whenReady().then(() => {
   electronSession.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false))
   installCsp()
 
-  store = new JsonStore(app.getPath('userData'))
-  const loaded = store.load()
-  session = createSession(loaded.db, loaded.currentUserId, (s) =>
-    store.save({ db: s.service.db, currentUserId: s.currentUserId })
-  )
-
-  ipcMain.handle('nexus:call', (_event, method: unknown, args: unknown) => {
+  // Packaged builds can never enable demo mode, even via a modified environment.
+  const demo = !app.isPackaged && process.env.NEXUS_MODE === 'demo'
+  const identity = new IdentityBridge(process.env.NEXUS_API_URL, !app.isPackaged, (url) => shell.openExternal(url))
+  if (demo) {
+    store = new JsonStore(join(app.getPath('userData'), 'demo'))
+    const loaded = store.load()
+    session = createSession(loaded.db, loaded.currentUserId, (s) =>
+      store.save({ db: s.service.db, currentUserId: s.currentUserId })
+    )
+  }
+  ipcMain.handle('nexus:mode', (event) => { trustedSender(event); return demo ? 'demo' : 'server' })
+  ipcMain.handle('nexus:identity', (event, action: unknown, body: unknown) => {
+    trustedSender(event)
+    return identity.identity(action, body)
+  })
+  ipcMain.handle('nexus:call', (event, method: unknown, args: unknown) => {
+    trustedSender(event)
     const list = Array.isArray(args) ? (args as unknown[]) : []
-    return handleCall(session, method, list)
+    return demo ? handleCall(session, method, list) : identity.business(method, list)
   })
 
   createWindow()

@@ -12,6 +12,8 @@ import Collaboration from './pages/Collaboration'
 import Performance from './pages/Performance'
 import Organization from './pages/Organization'
 import SettingsPage from './pages/Settings'
+import IdentityGate from './components/IdentityGate'
+import { EmptyState } from './components/ui'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null }
@@ -46,6 +48,8 @@ function Router() {
       return route.transactionId ? <TransactionDetail transactionId={route.transactionId} /> : <Transactions />
     case 'contracts':
       return route.contractId ? <ContractEditor contractId={route.contractId} /> : <ContractsPage />
+    case 'contacts':
+      return <EmptyState title="好友与联系人尚未开通" hint="联系人功能将在后续版本开放。企业成员管理请前往「公司档案与记忆」。" />
     case 'collaboration':
       return <Collaboration />
     case 'performance':
@@ -61,12 +65,24 @@ export default function App() {
   const loading = useApp((s) => s.loading)
   const state = useApp((s) => s.state)
   const init = useApp((s) => s.init)
+  const mode = useApp((s) => s.mode)
+  const refresh = useApp((s) => s.refreshIdentity)
 
   useEffect(() => {
     void init()
   }, [init])
 
-  if (loading || !state) {
+  useEffect(() => {
+    if (mode !== 'server') return
+    const timer = setInterval(() => void refresh(), 30_000)
+    const onFocus = () => void refresh()
+    window.addEventListener('focus', onFocus)
+    return () => { clearInterval(timer); window.removeEventListener('focus', onFocus) }
+  }, [mode, refresh])
+
+  if (!loading && !state) return <><IdentityGate /><Toasts /></>
+
+  if (loading) {
     return (
       <div className="h-full">
         <Spinner label="正在加载 Project Nexus" />

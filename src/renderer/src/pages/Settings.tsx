@@ -2,8 +2,14 @@ import { useState } from 'react'
 import { RotateCcw, ShieldAlert } from 'lucide-react'
 import { Button, Card, CardHeader, PageHeader } from '@/components/ui'
 import { useApp } from '@/store'
+import IdentitySettings from './IdentitySettings'
 
 export default function SettingsPage() {
+  const mode = useApp((s) => s.mode)
+  return mode === 'server' ? <IdentitySettings /> : <DemoSettings />
+}
+
+function DemoSettings() {
   const act = useApp((x) => x.act)
   const navigate = useApp((x) => x.navigate)
   const busy = useApp((x) => x.busy)

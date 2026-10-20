@@ -13,16 +13,21 @@
     "dev": "electron-vite dev",
     "start": "electron-vite preview",
     "build": "npm run typecheck && electron-vite build",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run typecheck:server",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "typecheck:server": "tsc --noEmit -p tsconfig.server.json",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/**/*.test.ts\"",
+    "server": "node --experimental-strip-types server/index.ts",
+    "dev:demo": "node scripts/demo.mjs",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder --mac"
   },
   "dependencies": {
     "@tiptap/pm": "^2.10.3",
     "@tiptap/react": "^2.10.3",
+    "openid-client": "^6.8.1",
+    "pg": "^8.16.3",
     "@tiptap/starter-kit": "^2.10.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -33,7 +38,9 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
     "@types/node": "^22.9.0",
+    "@types/pg": "^8.15.5",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",

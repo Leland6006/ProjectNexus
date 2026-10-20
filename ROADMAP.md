@@ -14,14 +14,18 @@
 
 **限制**：非真实认证；单机单用户；不支持 DOCX 导入导出；无电子签章；无自动更新。
 
-## V0.2 — 联网协作
+## V0.2 — 联网协作开发中
 
-- 真实用户认证（邮箱/手机号 + MFA）
-- 云端数据库（PostgreSQL）与服务端 API，沿用 `src/shared` 的业务引擎与权限模型
-- 多企业在线协作、邀请与成员管理
-- 服务端强制的合同权限隔离与审计日志
-- 实时同步与并发编辑冲突处理
-- GitHub Actions：自动 typecheck、测试与构建（已在 `.github/workflows/ci.yml` 配置）
+本地开发分支已包含服务端 OIDC/会话、企业与成员权限、PostgreSQL schema、API 以及 Docker Compose 开发依赖配置。它们仍需按 README 验收清单完成 Docker/Keycloak 邮箱、MFA、API 回调和双设备验证，不能据此视为生产就绪。
+
+- [x] 开发用 PostgreSQL、Keycloak 和 Mailpit 配置（本地配置未进行真实服务端到端验收）
+- [x] OIDC code+PKCE、邮箱验证要求、账户安全页配置
+- [x] 服务端企业/成员/邀请与业务角色授权代码及 PGlite 集成测试
+- [ ] 6B-D 剩余交付项与独立 PostgreSQL/Keycloak 端到端验证
+- [ ] 双设备验收、SMTP/验证/重置/MFA 人工验收
+- [ ] 将全局 JSONB 快照迁移为具备组织边界的关系数据模型，并验证并发及备份恢复
+- [ ] 实时同步与并发编辑冲突处理
+- [x] GitHub Actions：自动 typecheck、测试与构建（已在 `.github/workflows/ci.yml` 配置）
 
 ## V0.3 — 企业试用
 

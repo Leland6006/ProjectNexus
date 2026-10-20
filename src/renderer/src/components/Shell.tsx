@@ -1,20 +1,22 @@
 import { useState, type ReactNode } from 'react'
-import { Building2, ChevronDown, FileText, Handshake, LayoutDashboard, MessagesSquare, Settings as SettingsIcon, ShieldAlert, Sparkles, Workflow } from 'lucide-react'
+import { Building2, ChevronDown, FileText, Handshake, LayoutDashboard, MessagesSquare, ShieldAlert, Sparkles, Users, Workflow } from 'lucide-react'
+import { IDENTITY_ROLE_LABEL } from '@shared/identity'
 import { ROLE_LABEL } from '@shared/types'
 import { pendingCount } from '@shared/proposalView'
 import { cn } from '@/lib/utils'
 import { counselGrantOrgIds, currentUser, directory, orgOf } from '@/lib/selectors'
 import { useApp, useView, type Page } from '@/store'
 
-const NAV: { page: Page; label: string; icon: typeof LayoutDashboard }[] = [
-  { page: 'dashboard', label: '工作台', icon: LayoutDashboard },
-  { page: 'proposals', label: 'AI 建议', icon: Sparkles },
-  { page: 'transactions', label: '交易项目', icon: Handshake },
-  { page: 'contracts', label: '合同中心', icon: FileText },
-  { page: 'collaboration', label: '协作与消息', icon: MessagesSquare },
-  { page: 'performance', label: '履约管理', icon: Workflow },
-  { page: 'organization', label: '企业与成员', icon: Building2 },
-  { page: 'settings', label: '设置', icon: SettingsIcon }
+const NAV: { page: Page; label: string; icon: typeof LayoutDashboard; secondary?: boolean }[] = [
+  { page: 'dashboard', label: '首页', icon: LayoutDashboard },
+  { page: 'transactions', label: '业务与项目', icon: Handshake },
+  { page: 'transactions', label: '业务', icon: Handshake, secondary: true },
+  { page: 'contracts', label: '合同', icon: FileText, secondary: true },
+  { page: 'contacts', label: '好友与联系人', icon: Users, secondary: true },
+  { page: 'proposals', label: '建议', icon: Sparkles, secondary: true },
+  { page: 'collaboration', label: '协作与消息', icon: MessagesSquare, secondary: true },
+  { page: 'performance', label: '履约管理', icon: Workflow, secondary: true },
+  { page: 'organization', label: '公司档案与记忆', icon: Building2 }
 ]
 
 function AccountSwitcher() {
@@ -114,6 +116,26 @@ function RepresentingOrgPicker() {
   )
 }
 
+function IdentityAccountMenu() {
+  const status = useApp((s) => s.identityStatus)
+  const identity = useApp((s) => s.identity)
+  const refresh = useApp((s) => s.refreshIdentity)
+  const navigate = useApp((s) => s.navigate)
+  const busy = useApp((s) => s.busy)
+  const [open, setOpen] = useState(false)
+  const company = status?.companies.find((item) => item.id === status.actingOrgId)
+  const menuClass = 'w-full rounded-md px-3 py-2 text-left text-sm text-ink-700 hover:bg-slate-50'
+  return <div className="relative px-3 pb-3"><button aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full items-center gap-2.5 rounded-lg border border-slate-200 bg-white p-2 text-left shadow-sm"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 font-medium text-brand-700">{status?.account?.name.slice(0, 1)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{status?.account?.name}</span><span className="block truncate text-xs text-ink-500">{company && IDENTITY_ROLE_LABEL[company.role]}</span></span><ChevronDown className="h-4 w-4 text-ink-400" /></button>{open && <><div className="fixed inset-0 z-10" onClick={() => setOpen(false)} /><div role="menu" className="absolute bottom-full left-3 right-3 z-20 mb-2 rounded-lg border border-slate-200 bg-white p-1 shadow-xl"><button role="menuitem" className={menuClass} onClick={() => { setOpen(false); navigate({ page: 'settings' }) }}>账号设置</button><button role="menuitem" className={menuClass} disabled={busy} onClick={() => { setOpen(false); void identity('account-security') }}>安全设置</button><button role="menuitem" className={menuClass} disabled={busy} onClick={async () => { setOpen(false); if (await identity('logout') !== null) await refresh() }}>退出登录</button></div></>}</div>
+}
+
+function CompanyPicker() {
+  const status = useApp((s) => s.identityStatus)
+  const selectCompany = useApp((s) => s.selectCompany)
+  const chooseCompany = useApp((s) => s.chooseCompany)
+  const busy = useApp((s) => s.busy)
+  return <div className="flex items-center gap-2"><select aria-label="切换工作企业" disabled={busy} value={status?.actingOrgId ?? ''} onChange={(event) => void selectCompany(event.target.value)} className="max-w-72 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-ink-700">{status?.companies.map((company) => <option value={company.id} key={company.id}>{company.name}</option>)}</select><button onClick={chooseCompany} className="text-xs text-brand-600 hover:underline">企业与邀请</button></div>
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const route = useApp((s) => s.route)
   const navigate = useApp((s) => s.navigate)
@@ -121,6 +143,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const me = currentUser(s)
   const myOrg = orgOf(s, me.orgId)
   const active: Page = route.page
+  const mode = useApp((x) => x.mode)
   const waiting = pendingCount(s.proposals)
 
   return (
@@ -134,13 +157,16 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
         </div>
         <nav className="flex-1 space-y-0.5 px-3" aria-label="主导航">
-          {NAV.map(({ page, label, icon: Icon }) => (
+          {NAV.map(({ page, label, icon: Icon, secondary }) => label === '业务与项目' ? (
+            <div key={label} className="flex items-center gap-2.5 px-2.5 pb-1 pt-4 text-xs font-medium text-ink-500"><Icon className="h-4 w-4" />{label}</div>
+          ) : (
             <button
-              key={page}
+              key={label}
               onClick={() => navigate({ page })}
               aria-current={active === page ? 'page' : undefined}
               className={cn(
                 'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors',
+                secondary && 'pl-7 text-xs',
                 active === page ? 'bg-white font-medium text-brand-700 shadow-sm ring-1 ring-slate-200' : 'text-ink-700 hover:bg-slate-100'
               )}
             >
@@ -152,19 +178,18 @@ export function Shell({ children }: { children: ReactNode }) {
             </button>
           ))}
         </nav>
-        <AccountSwitcher />
+        {mode === 'server' ? <IdentityAccountMenu /> : <><button className="mx-3 mb-2 px-2 text-left text-xs text-ink-500 hover:text-brand-600" onClick={() => navigate({ page: 'settings' })}>演示设置</button><AccountSwitcher /></>}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="drag flex h-12 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
           <div className="no-drag flex items-center gap-3 text-xs text-ink-500">
-            <span className="font-medium text-ink-700">{myOrg?.name}</span>
-            <RepresentingOrgPicker />
+            {mode === 'server' ? <CompanyPicker /> : <><span className="font-medium text-ink-700">{myOrg?.name}</span><RepresentingOrgPicker /></>}
           </div>
-          <div className="no-drag flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700" title="账号切换仅用于本地演示，不是真实的身份认证">
+          {mode !== 'server' && <div className="no-drag flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700" title="账号切换仅用于本地演示，不是真实的身份认证">
             <ShieldAlert className="h-3.5 w-3.5" />
             本地模拟账号 · 演示数据
-          </div>
+          </div>}
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
       </div>

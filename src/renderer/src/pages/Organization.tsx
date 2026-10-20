@@ -2,9 +2,15 @@ import { Building2, Scale } from 'lucide-react'
 import { ROLE_LABEL } from '@shared/types'
 import { Badge, Card, CardHeader, PageHeader } from '@/components/ui'
 import { currentUser, directory } from '@/lib/selectors'
-import { useView } from '@/store'
+import { useApp, useView } from '@/store'
+import CompanyMembers from './CompanyMembers'
 
 export default function Organization() {
+  const mode = useApp((s) => s.mode)
+  return mode === 'server' ? <CompanyMembers /> : <DemoOrganization />
+}
+
+function DemoOrganization() {
   const s = useView()
   const me = currentUser(s)
   const { organizations, users } = directory(s)

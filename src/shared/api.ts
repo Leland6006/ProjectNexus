@@ -1,6 +1,7 @@
 // The only surface the renderer may call. Names double as an allowlist in the main process.
 
 import type { ViewState } from './types.ts'
+import type { IdentityResult } from './identity.ts'
 
 export const API_METHODS = [
   'getState',
@@ -37,4 +38,6 @@ export type ApiResult = { ok: true; state: ViewState } | { ok: false; code: stri
 
 export interface NexusBridge {
   call(method: ApiMethod, ...args: unknown[]): Promise<ApiResult>
+  mode(): Promise<'demo' | 'server'>
+  identity(action: string, body?: unknown): Promise<IdentityResult>
 }
